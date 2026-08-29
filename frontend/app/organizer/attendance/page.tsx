@@ -15,6 +15,7 @@ import {
   Ticket,
   Users,
   XCircle,
+    X,
 } from "lucide-react";
 
 type ParticipantStatus = "checked-in" | "pending";

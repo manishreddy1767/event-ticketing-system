@@ -100,10 +100,12 @@ export default function TeamInvitationPage() {
           <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-white/40">
             You have joined{" "}
             <span className="text-white/70">
-              {invitation.team.name}
+                {invitation.team.name}
             </span>{" "}
-            for {invitation.event.title}.
-          </p>
+            for {invitation.event.title}. Your team leader will
+            complete the ticket purchase once all required members
+            accept their invitations.
+            </p>
 
           <div className="mt-7 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 text-left">
             <div className="flex items-center gap-3">
@@ -153,7 +155,7 @@ export default function TeamInvitationPage() {
             href="/events"
             className="mt-6 flex h-12 items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-white/90"
           >
-            Browse events
+            View my tickets
             <ArrowRight size={16} />
           </Link>
         </motion.div>

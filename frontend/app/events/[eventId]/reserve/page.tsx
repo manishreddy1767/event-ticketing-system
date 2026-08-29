@@ -323,13 +323,13 @@ export default function ReservationPage() {
           </p>
 
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Invitations sent.
+            Team invitations sent.
           </h1>
 
           <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-white/40">
-            Your teammates have been invited to join your
-            {selectedTicket?.label} registration for{" "}
-            {event.title}.
+            Your teammates have been invited to join your team.
+            Once every teammate accepts the invitation, your team
+            will be ready to complete the ticket purchase.
           </p>
 
           <div className="mt-7 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 text-left">
