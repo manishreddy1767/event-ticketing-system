@@ -14,7 +14,13 @@ import {
   XCircle,
 } from "lucide-react";
 
-type EventStatus = "Live" | "Upcoming" | "Completed" | "Suspended";
+type EventStatus =
+  | "Pending Approval"
+  | "Live"
+  | "Upcoming"
+  | "Completed"
+  | "Suspended"
+  | "Rejected";
 
 type AdminEvent = {
   id: string;
@@ -78,6 +84,26 @@ const initialEvents: AdminEvent[] = [
     capacity: 120,
     status: "Suspended",
   },
+  {
+    id: "EVT-HK26-006",
+    name: "Campus Hackathon",
+    organizer: "Coding Club",
+    organizerId: "ORG-0003",
+    date: "20 Nov 2026",
+    registrations: 0,
+    capacity: 250,
+    status: "Pending Approval",
+  },
+  {
+    id: "EVT-WK26-007",
+    name: "Web Development Workshop",
+    organizer: "Innovation Cell",
+    organizerId: "ORG-0004",
+    date: "28 Nov 2026",
+    registrations: 0,
+    capacity: 100,
+    status: "Rejected",
+  },
 ];
 
 export default function AdminEventsPage() {
@@ -121,6 +147,10 @@ export default function AdminEventsPage() {
     (event) => event.status === "Completed"
   ).length;
 
+  const pendingCount = events.filter(
+    (event) => event.status === "Pending Approval"
+  ).length;
+
   const totalRegistrations = events.reduce(
     (total, event) => total + event.registrations,
     0
@@ -141,6 +171,26 @@ export default function AdminEventsPage() {
       current.map((event) =>
         event.id === id
           ? { ...event, status: "Upcoming" }
+          : event
+      )
+    );
+  }
+
+  function approveEvent(id: string) {
+    setEvents((current) =>
+      current.map((event) =>
+        event.id === id
+          ? { ...event, status: "Upcoming" }
+          : event
+      )
+    );
+  }
+
+  function rejectEvent(id: string) {
+    setEvents((current) =>
+      current.map((event) =>
+        event.id === id
+          ? { ...event, status: "Rejected" }
           : event
       )
     );
@@ -200,6 +250,12 @@ export default function AdminEventsPage() {
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
+              icon={<ShieldCheck size={16} />}
+              label="Pending approval"
+              value={pendingCount}
+            />
+
+            <StatCard
               icon={<CheckCircle2 size={16} />}
               label="Live events"
               value={liveCount}
@@ -209,12 +265,6 @@ export default function AdminEventsPage() {
               icon={<CalendarDays size={16} />}
               label="Upcoming"
               value={upcomingCount}
-            />
-
-            <StatCard
-              icon={<XCircle size={16} />}
-              label="Completed"
-              value={completedCount}
             />
 
             <StatCard
@@ -256,10 +306,14 @@ export default function AdminEventsPage() {
                 className="h-10 rounded-xl border border-white/[0.07] bg-[#0c101a] px-3 text-[10px] text-white/50 outline-none"
               >
                 <option value="All">All events</option>
+                <option value="Pending Approval">
+                  Pending Approval
+                </option>
                 <option value="Live">Live</option>
                 <option value="Upcoming">Upcoming</option>
                 <option value="Completed">Completed</option>
                 <option value="Suspended">Suspended</option>
+                <option value="Rejected">Rejected</option>
               </select>
             </div>
           </div>
@@ -366,6 +420,8 @@ export default function AdminEventsPage() {
                       <td className="px-5 py-4">
                         <EventAction
                           event={event}
+                          onApprove={approveEvent}
+                          onReject={rejectEvent}
                           onSuspend={suspendEvent}
                           onRestore={restoreEvent}
                         />
@@ -431,6 +487,8 @@ export default function AdminEventsPage() {
                   <div className="mt-4">
                     <EventAction
                       event={event}
+                      onApprove={approveEvent}
+                      onReject={rejectEvent}
                       onSuspend={suspendEvent}
                       onRestore={restoreEvent}
                     />
@@ -473,9 +531,10 @@ export default function AdminEventsPage() {
 
                 <p className="mt-1 text-[10px] leading-5 text-white/25">
                   Admins can oversee events created by any
-                  organizer. Suspension and restoration are
-                  currently frontend-only actions. Actual
-                  permissions and event status will be enforced
+                  organizer. Pending events can be approved or
+                  rejected before they become visible to students.
+                  All approval, suspension, and restoration actions
+                  are currently frontend-only and will be enforced
                   by the backend later.
                 </p>
               </div>
@@ -519,6 +578,10 @@ function EventStatusBadge({
   status: EventStatus;
 }) {
   const config = {
+    "Pending Approval": {
+      className: "bg-amber-400/10 text-amber-300",
+      icon: <ShieldCheck size={10} />,
+    },
     Live: {
       className: "bg-emerald-400/10 text-emerald-300",
       icon: <CheckCircle2 size={10} />,
@@ -533,6 +596,10 @@ function EventStatusBadge({
     },
     Suspended: {
       className: "bg-red-400/10 text-red-300",
+      icon: <XCircle size={10} />,
+    },
+    Rejected: {
+      className: "bg-red-400/[0.06] text-red-300",
       icon: <XCircle size={10} />,
     },
   };
@@ -551,23 +618,89 @@ function EventStatusBadge({
 
 function EventAction({
   event,
+  onApprove,
+  onReject,
   onSuspend,
   onRestore,
 }: {
   event: AdminEvent;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
   onSuspend: (id: string) => void;
   onRestore: (id: string) => void;
 }) {
+  if (event.status === "Pending Approval") {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            alert(
+              `Event details for ${event.name} will be connected to the backend later.`
+            )
+          }
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+        >
+          <Eye size={11} />
+          View
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onApprove(event.id)}
+          className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[9px] font-semibold text-black transition hover:bg-white/90"
+        >
+          <CheckCircle2 size={11} />
+          Approve
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onReject(event.id)}
+          className="flex items-center gap-1.5 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-3 py-2 text-[9px] text-red-300 transition hover:bg-red-400/[0.08]"
+        >
+          <XCircle size={11} />
+          Reject
+        </button>
+      </div>
+    );
+  }
+
+  if (event.status === "Rejected") {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            alert(
+              `Event details for ${event.name} will be connected to the backend later.`
+            )
+          }
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+        >
+          <Eye size={11} />
+          View
+        </button>
+
+        <span className="text-[9px] text-white/20">
+          No action
+        </span>
+      </div>
+    );
+  }
+
   if (event.status === "Suspended") {
     return (
-      <button
-        type="button"
-        onClick={() => onRestore(event.id)}
-        className="flex items-center gap-1.5 rounded-lg border border-emerald-400/10 bg-emerald-400/[0.04] px-3 py-2 text-[9px] text-emerald-300 transition hover:bg-emerald-400/[0.08]"
-      >
-        <CheckCircle2 size={11} />
-        Restore
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onRestore(event.id)}
+          className="flex items-center gap-1.5 rounded-lg border border-emerald-400/10 bg-emerald-400/[0.04] px-3 py-2 text-[9px] text-emerald-300 transition hover:bg-emerald-400/[0.08]"
+        >
+          <CheckCircle2 size={11} />
+          Restore
+        </button>
+      </div>
     );
   }
 
