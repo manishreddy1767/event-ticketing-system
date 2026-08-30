@@ -60,8 +60,11 @@ def get_current_user(
 
     return user
 
+
 def require_role(*allowed_roles: str):
-    def role_checker(current_user: User = Depends(get_current_user)):
+    def role_checker(
+        current_user: User = Depends(get_current_user),
+    ):
         if current_user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -71,39 +74,3 @@ def require_role(*allowed_roles: str):
         return current_user
 
     return role_checker
-
-
-def require_student(
-    current_user: User = Depends(get_current_user),
-):
-    if current_user.role != "student":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Student access required",
-        )
-
-    return current_user
-
-
-def require_organizer(
-    current_user: User = Depends(get_current_user),
-):
-    if current_user.role != "organizer":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Organizer access required",
-        )
-
-    return current_user
-
-
-def require_admin(
-    current_user: User = Depends(get_current_user),
-):
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-
-    return current_user

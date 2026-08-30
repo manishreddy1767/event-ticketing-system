@@ -1,16 +1,11 @@
 from fastapi import Depends, FastAPI
 from sqlalchemy import text
 
+from app.core.dependencies import require_role
 from app.database import Base, engine
 from app.models import User
 from app.routes.auth import router as auth_router
 
-from app.core.dependencies import (
-    get_current_user,
-    require_admin,
-    require_organizer,
-    require_student,
-)
 
 app = FastAPI(title="Evently API")
 
@@ -35,10 +30,13 @@ def database_test():
             "database": "connected",
             "result": result.scalar(),
         }
-    
+
+
 @app.get("/test/student")
 def test_student_access(
-    current_user: User = Depends(require_student),
+    current_user: User = Depends(
+        require_role("student")
+    ),
 ):
     return {
         "message": "Student access granted",
@@ -49,10 +47,12 @@ def test_student_access(
 
 @app.get("/test/organizer")
 def test_organizer_access(
-    current_user: User = Depends(require_organizer),
+    current_user: User = Depends(
+        require_role("organizer", "admin")
+    ),
 ):
     return {
-        "message": "Organizer access granted",
+        "message": "Organizer/Admin access granted",
         "user_id": current_user.id,
         "role": current_user.role,
     }
@@ -60,7 +60,9 @@ def test_organizer_access(
 
 @app.get("/test/admin")
 def test_admin_access(
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(
+        require_role("admin")
+    ),
 ):
     return {
         "message": "Admin access granted",
