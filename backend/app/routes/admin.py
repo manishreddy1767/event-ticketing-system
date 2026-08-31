@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, require_role
+from app.models.event import Event
 from app.models.organizer import Organizer
 from app.models.user import User
 
@@ -11,6 +12,10 @@ router = APIRouter(
     tags=["Admin"],
 )
 
+
+# =========================
+# ORGANIZER MANAGEMENT
+# =========================
 
 @router.get("/organizers/pending")
 def get_pending_organizers(
@@ -124,4 +129,95 @@ def reject_organizer(
         "organizer_id": organizer.id,
         "user_id": user.id,
         "status": user.status,
+    }
+
+
+# =========================
+# EVENT MANAGEMENT
+# =========================
+
+@router.get("/events/pending")
+def get_pending_events(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    events = (
+        db.query(Event)
+        .filter(Event.status == "pending")
+        .order_by(Event.created_at.asc())
+        .all()
+    )
+
+    return events
+
+
+@router.post("/events/{event_id}/approve")
+def approve_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    event = (
+        db.query(Event)
+        .filter(Event.id == event_id)
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    if event.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Event is not pending approval",
+        )
+
+    event.status = "approved"
+
+    db.commit()
+    db.refresh(event)
+
+    return {
+        "message": "Event approved successfully",
+        "event_id": event.id,
+        "status": event.status,
+    }
+
+
+@router.post("/events/{event_id}/reject")
+def reject_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    event = (
+        db.query(Event)
+        .filter(Event.id == event_id)
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    if event.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Event is not pending approval",
+        )
+
+    event.status = "rejected"
+
+    db.commit()
+    db.refresh(event)
+
+    return {
+        "message": "Event rejected successfully",
+        "event_id": event.id,
+        "status": event.status,
     }

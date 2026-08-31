@@ -8,6 +8,10 @@ from app.routes.admin import router as admin_router
 
 from app.routes.events import router as events_router
 
+from app.routes.tickets import router as tickets_router
+
+from app.routes.payments import router as payments_router
+
 app = FastAPI(title="Evently API")
 
 Base.metadata.create_all(bind=engine)
@@ -15,6 +19,8 @@ Base.metadata.create_all(bind=engine)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(events_router)
+app.include_router(tickets_router)
+app.include_router(payments_router)
 
 
 @app.get("/")
