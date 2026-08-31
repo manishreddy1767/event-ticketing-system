@@ -1,21 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, require_role
 from app.models.event import Event
+from app.models.team import Team
+from app.models.team_member import TeamMember
+from app.models.ticket import Ticket
 from app.models.ticket_type import TicketType
 from app.models.user import User
 from app.schemas.ticket import (
+    TicketCreateRequest,
+    TicketResponse,
     TicketTypeCreateRequest,
     TicketTypeResponse,
 )
-
-from app.models.ticket import Ticket
-from app.schemas.ticket import TicketCreateRequest, TicketResponse
-
-from fastapi.responses import StreamingResponse
-
 from app.services.qr import generate_qr_code
+
 
 router = APIRouter(
     prefix="/events",
@@ -70,6 +71,7 @@ def create_ticket_type(
 
     return ticket_type
 
+
 @router.get(
     "/{event_id}/ticket-types",
     response_model=list[TicketTypeResponse],
@@ -100,6 +102,7 @@ def get_ticket_types(
         .all()
     )
 
+
 @router.post(
     "/{event_id}/book",
     response_model=TicketResponse,
@@ -111,7 +114,6 @@ def book_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("student")),
 ):
-    # Make sure the event exists and is approved
     event = (
         db.query(Event)
         .filter(
@@ -127,7 +129,6 @@ def book_ticket(
             detail="Event not found",
         )
 
-    # Lock the ticket-type row while booking
     ticket_type = (
         db.query(TicketType)
         .filter(
@@ -144,7 +145,64 @@ def book_ticket(
             detail="Ticket type not found",
         )
 
-    # Check availability while the row is locked
+    # Individual ticket
+    if ticket_type.team_size == 1:
+
+        if ticket_data.team_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Individual tickets cannot use a team",
+            )
+
+        if ticket_data.quantity != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Individual tickets must be booked one at a time",
+            )
+
+    # Team ticket
+    else:
+
+        if ticket_data.team_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A team is required for this ticket type",
+            )
+
+        team = (
+            db.query(Team)
+            .filter(
+                Team.id == ticket_data.team_id,
+                Team.event_id == event_id,
+                Team.leader_id == current_user.id,
+            )
+            .first()
+        )
+
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Team not found",
+            )
+
+        team_member_count = (
+            db.query(TeamMember)
+            .filter(TeamMember.team_id == team.id)
+            .count()
+        )
+
+        if team_member_count != ticket_type.team_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Team must have exactly {ticket_type.team_size} members",
+            )
+
+        if ticket_data.quantity != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Team tickets must be booked one at a time",
+            )
+
     if ticket_type.available_quantity < ticket_data.quantity:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -158,6 +216,7 @@ def book_ticket(
     ticket = Ticket(
         ticket_type_id=ticket_type.id,
         user_id=current_user.id,
+        team_id=ticket_data.team_id,
         quantity=ticket_data.quantity,
         total_amount=total_amount,
         status="reserved",
@@ -168,6 +227,7 @@ def book_ticket(
     db.refresh(ticket)
 
     return ticket
+
 
 @router.get(
     "/my",
@@ -210,6 +270,7 @@ def get_ticket(
         )
 
     return ticket
+
 
 @router.get("/ticket/{ticket_id}/qr")
 def get_ticket_qr(

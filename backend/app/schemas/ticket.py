@@ -26,6 +26,7 @@ class TicketTypeResponse(BaseModel):
 class TicketCreateRequest(BaseModel):
     ticket_type_id: int = Field(gt=0)
     quantity: int = Field(gt=0)
+    team_id: int | None = Field(default=None, gt=0)
 
 
 class TicketResponse(BaseModel):
@@ -36,6 +37,7 @@ class TicketResponse(BaseModel):
     total_amount: Decimal
     status: str
     qr_token: str
+    team_id: int | None
 
     class Config:
         from_attributes = True
