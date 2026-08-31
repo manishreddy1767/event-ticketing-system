@@ -5,6 +5,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
+import uuid
+
 
 class Ticket(Base):
     __tablename__ = "tickets"
@@ -48,3 +50,10 @@ class Ticket(Base):
 
     ticket_type = relationship("TicketType")
     user = relationship("User")
+
+    qr_token: Mapped[str] = mapped_column(
+    String(100),
+    unique=True,
+    nullable=False,
+    default=lambda: str(uuid.uuid4()),
+    )

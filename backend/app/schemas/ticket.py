@@ -35,6 +35,7 @@ class TicketResponse(BaseModel):
     quantity: int
     total_amount: Decimal
     status: str
+    qr_token: str
 
     class Config:
         from_attributes = True
