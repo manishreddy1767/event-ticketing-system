@@ -13,6 +13,10 @@ from app.schemas.ticket import (
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreateRequest, TicketResponse
 
+from fastapi.responses import StreamingResponse
+
+from app.services.qr import generate_qr_code
+
 router = APIRouter(
     prefix="/events",
     tags=["Ticket Types"],
@@ -207,4 +211,36 @@ def get_ticket(
 
     return ticket
 
+@router.get("/ticket/{ticket_id}/qr")
+def get_ticket_qr(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("student")),
+):
+    ticket = (
+        db.query(Ticket)
+        .filter(
+            Ticket.id == ticket_id,
+            Ticket.user_id == current_user.id,
+        )
+        .first()
+    )
 
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket not found",
+        )
+
+    if ticket.status != "paid":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="QR code is available only for paid tickets",
+        )
+
+    qr_image = generate_qr_code(ticket.qr_token)
+
+    return StreamingResponse(
+        qr_image,
+        media_type="image/png",
+    )
