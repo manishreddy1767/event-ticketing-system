@@ -1,6 +1,10 @@
+from datetime import datetime
+from decimal import Decimal
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.ml.predict import predict_discount
 from app.models.event import Event
 from app.models.team import Team
 from app.models.team_member import TeamMember
@@ -92,7 +96,9 @@ def book_ticket(
 
         member_count = (
             db.query(TeamMember)
-            .filter(TeamMember.team_id == team.id)
+            .filter(
+                TeamMember.team_id == team.id
+            )
             .count()
         )
 
@@ -102,7 +108,52 @@ def book_ticket(
                 detail="Team size does not match the selected ticket type",
             )
 
-    total_amount = ticket_type.price * ticket_data.quantity
+    original_amount = (
+        ticket_type.price * ticket_data.quantity
+    )
+
+    registered_count = (
+        db.query(Ticket)
+        .join(
+            TicketType,
+            Ticket.ticket_type_id == TicketType.id,
+        )
+        .filter(
+            TicketType.event_id == event_id,
+            Ticket.status == "paid",
+        )
+        .count()
+    )
+
+    days_until_event = max(
+        0,
+        (event.event_date - datetime.utcnow()).days,
+    )
+
+    predicted_discount = predict_discount(
+        registered_count=registered_count,
+        capacity=event.capacity,
+        days_until_event=days_until_event,
+    )
+
+    discount_percent = min(
+        predicted_discount,
+        float(event.max_discount_percent),
+    )
+
+    discount_amount = (
+        original_amount
+        * Decimal(str(discount_percent))
+        / Decimal("100")
+    ).quantize(
+        Decimal("0.01")
+    )
+
+    total_amount = (
+        original_amount - discount_amount
+    ).quantize(
+        Decimal("0.01")
+    )
 
     ticket_type.available_quantity -= ticket_data.quantity
 
@@ -112,6 +163,8 @@ def book_ticket(
         team_id=ticket_data.team_id,
         quantity=ticket_data.quantity,
         total_amount=total_amount,
+        discount_percent=discount_percent,
+        discount_amount=discount_amount,
         status="reserved",
     )
 

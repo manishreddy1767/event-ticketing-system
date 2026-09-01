@@ -40,6 +40,18 @@ class Ticket(Base):
         nullable=False,
     )
 
+    discount_percent: Mapped[float] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=0,
+    )
+
+    discount_amount: Mapped[float] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+        default=0,
+    )
+
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

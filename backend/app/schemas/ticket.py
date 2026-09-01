@@ -35,6 +35,8 @@ class TicketResponse(BaseModel):
     user_id: int
     quantity: int
     total_amount: Decimal
+    discount_percent: Decimal
+    discount_amount: Decimal
     status: str
     qr_token: str
     team_id: int | None
