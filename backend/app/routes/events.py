@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_db, require_role
 from app.models.event import Event
 from app.models.user import User
-from app.schemas.event import EventCreateRequest, EventResponse
+from app.schemas.event import (
+    EventCreateRequest,
+    EventResponse,
+    DiscountResponse,
+)
 
 
 router = APIRouter(
@@ -30,6 +34,7 @@ def create_event(
         venue=event_data.venue,
         event_date=event_data.event_date,
         capacity=event_data.capacity,
+        max_discount_percent=event_data.max_discount_percent,
         status="pending",
     )
 
@@ -69,6 +74,42 @@ def get_my_events(
         .order_by(Event.created_at.desc())
         .all()
     )
+
+
+@router.get(
+    "/{event_id}/discount",
+    response_model=DiscountResponse,
+)
+def get_event_discount(
+    event_id: int,
+    db: Session = Depends(get_db),
+):
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.status == "approved",
+        )
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    from app.ml.predict import save_discount_prediction
+
+    prediction = save_discount_prediction(
+        db,
+        event,
+    )
+
+    return {
+        "event_id": event.id,
+        "predicted_discount": prediction.predicted_discount,
+    }
 
 
 @router.get(

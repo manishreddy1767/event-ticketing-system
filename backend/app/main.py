@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.database import Base, engine
+from app.models.discount_prediction import DiscountPrediction
 from app.routes.auth import router as auth_router
 
 from app.routes.admin import router as admin_router

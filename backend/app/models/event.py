@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -42,6 +42,12 @@ class Event(Base):
     capacity: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
+    )
+
+    max_discount_percent: Mapped[float] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=0,
     )
 
     status: Mapped[str] = mapped_column(

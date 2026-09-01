@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +10,10 @@ class EventCreateRequest(BaseModel):
     venue: str = Field(min_length=2, max_length=255)
     event_date: datetime
     capacity: int = Field(gt=0)
+    max_discount_percent: Decimal = Field(
+        ge=0,
+        le=100,
+    )
 
 
 class EventResponse(BaseModel):
@@ -19,8 +24,14 @@ class EventResponse(BaseModel):
     venue: str
     event_date: datetime
     capacity: int
+    max_discount_percent: Decimal
     status: str
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class DiscountResponse(BaseModel):
+    event_id: int
+    predicted_discount: Decimal
