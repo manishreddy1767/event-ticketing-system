@@ -39,6 +39,7 @@ def create_event(
 
     return event
 
+
 @router.get(
     "",
     response_model=list[EventResponse],
@@ -50,6 +51,22 @@ def get_events(
         db.query(Event)
         .filter(Event.status == "approved")
         .order_by(Event.event_date.asc())
+        .all()
+    )
+
+
+@router.get(
+    "/my",
+    response_model=list[EventResponse],
+)
+def get_my_events(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer")),
+):
+    return (
+        db.query(Event)
+        .filter(Event.organizer_id == current_user.id)
+        .order_by(Event.created_at.desc())
         .all()
     )
 

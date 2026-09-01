@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.models.event import Event
 from app.core.dependencies import get_db, require_role
 from app.models.attendance import Attendance
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.schemas.attendance import CheckInRequest, AttendanceResponse
+from app.models.ticket_type import TicketType
 
 
 router = APIRouter(
@@ -64,3 +66,25 @@ def check_in(
     db.refresh(attendance)
 
     return attendance
+
+@router.get(
+    "/events/{event_id}",
+    response_model=list[AttendanceResponse],
+)
+def get_event_attendance(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer", "admin")),
+):
+    query = (
+        db.query(Attendance)
+        .join(Ticket, Attendance.ticket_id == Ticket.id)
+        .join(TicketType, Ticket.ticket_type_id == TicketType.id)
+        .join(Event, TicketType.event_id == Event.id)
+        .filter(Event.id == event_id)
+    )
+
+    if current_user.role == "organizer":
+        query = query.filter(Event.organizer_id == current_user.id)
+
+    return query.order_by(Attendance.checked_in_at.asc()).all()

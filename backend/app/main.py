@@ -18,6 +18,10 @@ from app.routes.teams import router as teams_router
 
 from app.routes.certificates import router as certificates_router
 
+from app.routes.users import router as users_router
+
+from app.routes.organizers import router as organizers_router
+
 app = FastAPI(title="Evently API")
 
 Base.metadata.create_all(bind=engine)
@@ -30,6 +34,8 @@ app.include_router(payments_router)
 app.include_router(attendance_router)
 app.include_router(teams_router)
 app.include_router(certificates_router)
+app.include_router(users_router)
+app.include_router(organizers_router)
 
 
 @app.get("/")

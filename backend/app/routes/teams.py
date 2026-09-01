@@ -135,6 +135,22 @@ def add_team_member(
             detail="User is already a team member",
         )
 
+    existing_event_team = (
+        db.query(TeamMember)
+        .join(Team, TeamMember.team_id == Team.id)
+        .filter(
+            Team.event_id == team.event_id,
+            TeamMember.user_id == user.id,
+        )
+        .first()
+    )
+
+    if existing_event_team:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User already belongs to a team for this event",
+        )
+
     member = TeamMember(
         team_id=team.id,
         user_id=user.id,
