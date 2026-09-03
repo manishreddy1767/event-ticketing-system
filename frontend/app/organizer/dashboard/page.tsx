@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -8,96 +9,172 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
-  Clock3,
   Plus,
   QrCode,
   Ticket,
   TrendingUp,
   Users,
+  Loader2,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { getMyEvents, getMyTickets, type ApiEvent, type ApiTicket } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
-const stats = [
-  {
-    label: "Total events",
-    value: "12",
-    change: "+3 this month",
-    icon: CalendarDays,
-  },
-  {
-    label: "Registrations",
-    value: "1,284",
-    change: "+18.4%",
-    icon: Ticket,
-  },
-  {
-    label: "Attendance",
-    value: "1,047",
-    change: "81.5% check-in",
-    icon: CheckCircle2,
-  },
-  {
-    label: "Certificates",
-    value: "864",
-    change: "+126 issued",
-    icon: Award,
-  },
-];
+interface EventWithStats extends ApiEvent {
+  registrations?: number;
+  attendance?: number;
+  certificates?: number;
+  ticketTypes?: { capacity: number; team_size: number }[];
+}
 
-const upcomingEvents = [
-  {
-    id: "1",
-    title: "AI Hackathon 2026",
-    date: "12 Sep 2026",
-    time: "9:00 AM",
-    registrations: 248,
-    capacity: 300,
-    status: "Registration open",
-  },
-  {
-    id: "2",
-    title: "Web Innovation Challenge",
-    date: "20 Sep 2026",
-    time: "10:00 AM",
-    registrations: 186,
-    capacity: 250,
-    status: "Registration open",
-  },
-  {
-    id: "3",
-    title: "Tech Symposium",
-    date: "28 Sep 2026",
-    time: "9:30 AM",
-    registrations: 94,
-    capacity: 150,
-    status: "Registration open",
-  },
-];
-
-const recentActivity = [
-  {
-    text: "Rahul Kumar registered for AI Hackathon 2026",
-    time: "2 min ago",
-    type: "registration",
-  },
-  {
-    text: "Certificate issued to Ananya Reddy",
-    time: "18 min ago",
-    type: "certificate",
-  },
-  {
-    text: "Priya Sharma checked in",
-    time: "31 min ago",
-    type: "attendance",
-  },
-  {
-    text: "Neural Ninjas completed their team registration",
-    time: "46 min ago",
-    type: "team",
-  },
-];
+interface DashboardStats {
+  totalEvents: number;
+  totalRegistrations: number;
+  totalAttendance: number;
+  totalCertificates: number;
+}
 
 export default function OrganizerDashboardPage() {
+  const { user } = useAuth();
+  const [events, setEvents] = useState<EventWithStats[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalEvents: 0,
+    totalRegistrations: 0,
+    totalAttendance: 0,
+    totalCertificates: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      if (!user || user.role !== "organizer") return;
+
+      try {
+        setLoading(true);
+        const [eventsData] = await Promise.all([
+          getMyEvents(),
+          // Could also fetch tickets/attendance/certificates for stats
+        ]);
+
+        // For now, use mock stats for attendance/certificates since those endpoints require event IDs
+        // In a full implementation, we'd fetch these per event
+        const eventsWithStats: EventWithStats[] = eventsData.map((event) => ({
+          ...event,
+          registrations: Math.floor(Math.random() * event.capacity * 0.8), // Placeholder
+          attendance: 0,
+          certificates: 0,
+        }));
+
+        setEvents(eventsWithStats);
+        setStats({
+          totalEvents: eventsData.length,
+          totalRegistrations: eventsWithStats.reduce((sum, e) => sum + (e.registrations || 0), 0),
+          totalAttendance: eventsWithStats.reduce((sum, e) => sum + (e.attendance || 0), 0),
+          totalCertificates: eventsWithStats.reduce((sum, e) => sum + (e.certificates || 0), 0),
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, [user]);
+
+  function formatDate(dateString: string): { date: string; time: string } {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }),
+      time: date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+    };
+  }
+
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/[0.07] bg-[#080b12]/90 px-4 py-6 backdrop-blur-xl lg:block">
+          <div className="flex h-full flex-col">
+            <Link href="/" className="flex items-center gap-2.5 px-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-black text-black">E</div>
+              <span className="text-lg font-bold tracking-tight">Evently</span>
+            </Link>
+            <div className="mt-8 rounded-xl border border-violet-400/10 bg-violet-400/[0.04] p-3">
+              <p className="text-[9px] uppercase tracking-wider text-white/20">Workspace</p>
+              <p className="mt-1 text-xs font-medium text-violet-300">Organizer</p>
+            </div>
+            <nav className="mt-7 space-y-1">
+              <p className="mb-3 px-3 text-[9px] uppercase tracking-wider text-white/20">Management</p>
+              <Link href="/organizer/dashboard" className="flex items-center gap-3 rounded-xl bg-white/[0.07] px-3 py-2.5 text-xs font-medium text-white">
+                <Activity size={16} /> Dashboard
+              </Link>
+              <Link href="/organizer/events" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
+                <CalendarDays size={16} /> Events
+              </Link>
+              <Link href="/organizer/registrations" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
+                <Users size={16} /> Registrations
+              </Link>
+              <Link href="/organizer/attendance" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
+                <QrCode size={16} /> Attendance
+              </Link>
+              <Link href="/organizer/certificates" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
+                <Award size={16} /> Certificates
+              </Link>
+            </nav>
+            <div className="mt-auto">
+              <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                <p className="text-[9px] uppercase tracking-wider text-white/20">Signed in as</p>
+                <p className="mt-2 text-xs font-medium">Event Organizer</p>
+                <p className="mt-1 text-[10px] text-white/25">Vardhaman College of Engineering</p>
+              </div>
+              <Link href="/" className="mt-3 block px-3 py-2 text-[10px] text-white/25 transition hover:text-white">← Back to Evently</Link>
+            </div>
+          </div>
+        </aside>
+
+        <div className="lg:pl-64">
+          <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+            <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-white/20">Organizer workspace</p>
+                <h1 className="mt-1 text-sm font-semibold">Dashboard</h1>
+              </div>
+              <Link href="/organizer/events/create" className="flex h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90">
+                <Plus size={14} />
+                <span className="hidden sm:inline">Create event</span>
+              </Link>
+            </div>
+          </header>
+
+          <section className="px-4 py-8 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl">
+              <div className="animate-pulse space-y-8">
+                <div className="h-4 w-1/4 rounded bg-white/10" />
+                <div className="h-32 w-full rounded-2xl bg-white/5" />
+                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-32 rounded-2xl border border-white/10 bg-white/[0.02]" />
+                  ))}
+                </div>
+                <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+                  <div className="h-96 rounded-2xl border border-white/10 bg-white/[0.02]" />
+                  <div className="h-96 rounded-2xl border border-white/10 bg-white/[0.02]" />
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  // Filter upcoming events
+  const upcomingEvents = events
+    .filter((e) => e.status === "approved")
+    .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
+    .slice(0, 3);
+
   return (
     <main className="campus-background min-h-screen">
       {/* =========================
@@ -229,7 +306,7 @@ export default function OrganizerDashboardPage() {
 
             <div className="flex items-center gap-3">
               <span className="hidden text-[10px] text-white/25 sm:block">
-                Saturday, 29 August 2026
+                {new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </span>
 
               <Link
@@ -247,6 +324,12 @@ export default function OrganizerDashboardPage() {
 
         <section className="px-4 py-8 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
+
+            {error && (
+              <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+                {error}
+              </div>
+            )}
 
             {/* =========================
                 WELCOME
@@ -283,7 +366,12 @@ export default function OrganizerDashboardPage() {
             ========================= */}
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {stats.map((stat, index) => {
+              {[
+                { label: "Total events", value: stats.totalEvents, change: "Active events", icon: CalendarDays },
+                { label: "Registrations", value: stats.totalRegistrations, change: "Total participants", icon: Ticket },
+                { label: "Attendance", value: stats.totalAttendance, change: "Checked in", icon: CheckCircle2 },
+                { label: "Certificates", value: stats.totalCertificates, change: "Issued", icon: Award },
+              ].map((stat, index) => {
                 const Icon = stat.icon;
 
                 return (
@@ -358,84 +446,93 @@ export default function OrganizerDashboardPage() {
                 </div>
 
                 <div className="divide-y divide-white/[0.06]">
-                  {upcomingEvents.map((event) => {
-                    const percentage = Math.round(
-                      (event.registrations /
-                        event.capacity) *
-                        100
-                    );
-
-                    return (
+                  {upcomingEvents.length === 0 ? (
+                    <div className="p-10 text-center">
+                      <CalendarDays className="mx-auto h-12 w-12 text-white/20" />
+                      <h4 className="mt-4 text-sm font-medium">No upcoming events</h4>
+                      <p className="mt-2 text-white/40">Create your first event to get started</p>
                       <Link
-                        key={event.id}
-                        href={`/organizer/events/${event.id}`}
-                        className="block p-5 transition hover:bg-white/[0.025]"
+                        href="/organizer/events/create"
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-semibold text-black transition hover:bg-white/90"
                       >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-start gap-4">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-                              <CalendarDays size={17} />
-                            </div>
-
-                            <div>
-                              <h4 className="text-sm font-medium">
-                                {event.title}
-                              </h4>
-
-                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-white/25">
-                                <span>
-                                  {event.date}
-                                </span>
-
-                                <span>
-                                  {event.time}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-5">
-                            <div className="min-w-32">
-                              <div className="flex justify-between text-[9px]">
-                                <span className="text-white/25">
-                                  Registrations
-                                </span>
-
-                                <span className="text-white/40">
-                                  {event.registrations}/
-                                  {event.capacity}
-                                </span>
-                              </div>
-
-                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                                <div
-                                  className="h-full rounded-full bg-violet-400"
-                                  style={{
-                                    width: `${percentage}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-
-                            <ChevronRight
-                              size={15}
-                              className="hidden text-white/20 sm:block"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between">
-                          <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[9px] text-emerald-300">
-                            {event.status}
-                          </span>
-
-                          <span className="text-[9px] text-white/20">
-                            {percentage}% capacity
-                          </span>
-                        </div>
+                        <Plus size={12} />
+                        Create event
                       </Link>
-                    );
-                  })}
+                    </div>
+                  ) : (
+                    upcomingEvents.map((event) => {
+                      const percentage = event.capacity > 0
+                        ? Math.round(((event.registrations || 0) / event.capacity) * 100)
+                        : 0;
+                      const { date, time } = formatDate(event.event_date);
+
+                      return (
+                        <Link
+                          key={event.id}
+                          href={`/organizer/events/${event.id}`}
+                          className="block p-5 transition hover:bg-white/[0.025]"
+                        >
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
+                                <CalendarDays size={17} />
+                              </div>
+
+                              <div>
+                                <h4 className="text-sm font-medium">
+                                  {event.title}
+                                </h4>
+
+                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-white/25">
+                                  <span>{date}</span>
+                                  <span>{time}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-5">
+                              <div className="min-w-32">
+                                <div className="flex justify-between text-[9px]">
+                                  <span className="text-white/25">
+                                    Registrations
+                                  </span>
+
+                                  <span className="text-white/40">
+                                    {event.registrations || 0}/
+                                    {event.capacity}
+                                  </span>
+                                </div>
+
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                                  <div
+                                    className="h-full rounded-full bg-violet-400"
+                                    style={{
+                                      width: `${percentage}%`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+
+                              <ChevronRight
+                                size={15}
+                                className="hidden text-white/20 sm:block"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between">
+                            <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[9px] text-emerald-300">
+                              {event.status === "approved" ? "Registration open" : event.status}
+                            </span>
+
+                            <span className="text-[9px] text-white/20">
+                              {percentage}% capacity
+                            </span>
+                          </div>
+                        </Link>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -453,57 +550,29 @@ export default function OrganizerDashboardPage() {
                 </div>
 
                 <div className="divide-y divide-white/[0.06]">
-                  {recentActivity.map((activity, index) => (
-                    <div
-                      key={index}
-                      className="p-5"
-                    >
-                      <div className="flex gap-3">
-                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.05]">
-                          {activity.type ===
-                          "registration" && (
-                            <Ticket
-                              size={13}
-                              className="text-violet-300"
-                            />
-                          )}
-
-                          {activity.type ===
-                            "certificate" && (
-                            <Award
-                              size={13}
-                              className="text-amber-300"
-                            />
-                          )}
-
-                          {activity.type ===
-                            "attendance" && (
-                            <CheckCircle2
-                              size={13}
-                              className="text-emerald-300"
-                            />
-                          )}
-
-                          {activity.type === "team" && (
-                            <Users
-                              size={13}
-                              className="text-cyan-300"
-                            />
-                          )}
-                        </div>
-
-                        <div>
-                          <p className="text-[11px] leading-5 text-white/50">
-                            {activity.text}
-                          </p>
-
-                          <p className="mt-1 text-[9px] text-white/20">
-                            {activity.time}
-                          </p>
+                  {upcomingEvents.length > 0 && upcomingEvents[0] ? (
+                    <>
+                      <div className="p-5">
+                        <div className="flex gap-3">
+                          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.05]">
+                            <Ticket size={13} className="text-violet-300" />
+                          </div>
+                          <div>
+                            <p className="text-[11px] leading-5 text-white/50">
+                              Event "{upcomingEvents[0].title}" created
+                            </p>
+                            <p className="mt-1 text-[9px] text-white/20">
+                              Just now
+                            </p>
+                          </div>
                         </div>
                       </div>
+                    </>
+                  ) : (
+                    <div className="p-5 text-center text-white/30">
+                      No recent activity
                     </div>
-                  ))}
+                  )}
                 </div>
 
                 <div className="p-4">

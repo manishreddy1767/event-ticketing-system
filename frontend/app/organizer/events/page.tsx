@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -14,94 +14,26 @@ import {
   Search,
   Ticket,
   Users,
+  Loader2,
 } from "lucide-react";
+import { getMyEvents, type ApiEvent } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type EventStatus =
   | "Registration open"
   | "Upcoming"
   | "Registration closed"
-  | "Ended";
+  | "Ended"
+  | "pending"
+  | "approved"
+  | "rejected";
 
-type EventItem = {
-  id: string;
-  title: string;
-  description: string;
+interface EventWithStats extends ApiEvent {
+  registrations: number;
+  registrationDeadline: string;
   date: string;
   time: string;
-  venue: string;
-  registrations: number;
-  capacity: number;
-  registrationDeadline: string;
-  status: EventStatus;
-};
-
-const initialEvents: EventItem[] = [
-  {
-    id: "1",
-    title: "AI Hackathon 2026",
-    description:
-      "Build practical AI solutions for real-world problems.",
-    date: "12 September 2026",
-    time: "9:00 AM – 6:00 PM",
-    venue: "Main Auditorium",
-    registrations: 248,
-    capacity: 300,
-    registrationDeadline: "8 September 2026",
-    status: "Registration open",
-  },
-  {
-    id: "2",
-    title: "Web Innovation Challenge",
-    description:
-      "Design and build innovative web experiences.",
-    date: "20 September 2026",
-    time: "10:00 AM – 4:00 PM",
-    venue: "Innovation Lab",
-    registrations: 186,
-    capacity: 250,
-    registrationDeadline: "16 September 2026",
-    status: "Registration open",
-  },
-  {
-    id: "3",
-    title: "Tech Symposium",
-    description:
-      "A campus technology symposium featuring talks and workshops.",
-    date: "28 September 2026",
-    time: "9:30 AM – 5:00 PM",
-    venue: "Seminar Hall",
-    registrations: 94,
-    capacity: 150,
-    registrationDeadline: "24 September 2026",
-    status: "Upcoming",
-  },
-  {
-    id: "4",
-    title: "Cyber Security Workshop",
-    description:
-      "Hands-on security fundamentals and ethical hacking workshop.",
-    date: "4 September 2026",
-    time: "2:00 PM – 5:00 PM",
-    venue: "Computer Lab 3",
-    registrations: 120,
-    capacity: 120,
-    registrationDeadline: "1 September 2026",
-    status: "Registration closed",
-  },
-  {
-    id: "5",
-    title: "Campus Coding Sprint",
-    description:
-      "A competitive programming sprint for students.",
-    date: "10 August 2026",
-    time: "10:00 AM – 3:00 PM",
-    venue: "Programming Lab",
-    registrations: 180,
-    capacity: 200,
-    registrationDeadline: "8 August 2026",
-    status: "Ended",
-  },
-];
+}
 
 const filters = [
   "All",
@@ -113,15 +45,72 @@ const filters = [
 
 type Filter = (typeof filters)[number];
 
+function getEventStatus(event: ApiEvent): EventStatus {
+  const now = new Date();
+  const eventDate = new Date(event.event_date);
+  const deadline = new Date(event.event_date); // For demo, using event date as deadline
+
+  if (event.status === "pending") return "pending";
+  if (event.status === "rejected") return "Ended";
+  if (event.status === "approved") {
+    if (now > eventDate) return "Ended";
+    if (now > deadline) return "Registration closed";
+    return "Registration open";
+  }
+  return "Upcoming";
+}
+
+function formatDate(dateString: string): { date: string; time: string } {
+  const date = new Date(dateString);
+  return {
+    date: date.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" }),
+    time: date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+  };
+}
+
 export default function OrganizerEventsPage() {
-  const [events] = useState<EventItem[]>(initialEvents);
+  const { user } = useAuth();
+  const [events, setEvents] = useState<EventWithStats[]>([]);
   const [filter, setFilter] = useState<Filter>("All");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchEvents() {
+      if (!user || user.role !== "organizer") return;
+
+      try {
+        setLoading(true);
+        const eventsData = await getMyEvents();
+
+        // Add mock registration stats since the backend doesn't provide them yet
+        const eventsWithStats: EventWithStats[] = eventsData.map((event) => {
+          const dateTime = formatDate(event.event_date);
+          return {
+            ...event,
+            registrations: Math.floor(Math.random() * event.capacity * 0.8), // Placeholder
+            registrationDeadline: dateTime.date, // Using event date as deadline for display
+            date: dateTime.date,
+            time: dateTime.time,
+          };
+        });
+
+        setEvents(eventsWithStats);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load events");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchEvents();
+  }, [user]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
-      const matchesFilter =
-        filter === "All" || event.status === filter;
+      const status = getEventStatus(event);
+      const matchesFilter = filter === "All" || status === filter;
 
       const searchValue = search.toLowerCase().trim();
 

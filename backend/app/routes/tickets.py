@@ -1,18 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, require_role
 from app.models.event import Event
+from app.models.ticket import Ticket
 from app.models.ticket_type import TicketType
 from app.models.user import User
-from app.models.ticket import Ticket
 from app.schemas.ticket import (
-    TicketTypeCreateRequest,
-    TicketTypeResponse,
     TicketCreateRequest,
     TicketResponse,
+    TicketTypeCreateRequest,
+    TicketTypeResponse,
 )
 from app.services.booking import book_ticket
 from app.services.qr import generate_qr_code
@@ -73,6 +72,22 @@ def create_ticket_type(
 
 
 @router.get(
+    "/my-tickets",
+    response_model=list[TicketResponse],
+)
+def get_my_tickets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("student")),
+):
+    return (
+        db.query(Ticket)
+        .filter(Ticket.user_id == current_user.id)
+        .order_by(Ticket.created_at.desc())
+        .all()
+    )
+
+
+@router.get(
     "/{event_id}/ticket-types",
     response_model=list[TicketTypeResponse],
 )
@@ -95,12 +110,22 @@ def get_ticket_types(
             detail="Event not found",
         )
 
-    return (
+    ticket_types = (
         db.query(TicketType)
         .filter(TicketType.event_id == event_id)
         .order_by(TicketType.team_size.asc())
         .all()
     )
+
+    has_team_tickets = any(ticket_type.team_size > 1 for ticket_type in ticket_types)
+
+    if has_team_tickets:
+        ticket_types = [
+            ticket_type for ticket_type in ticket_types
+            if ticket_type.team_size > 1
+        ]
+
+    return ticket_types
 
 
 @router.post(
@@ -119,22 +144,6 @@ def book_ticket_route(
         ticket_data=ticket_data,
         current_user=current_user,
         event_id=event_id,
-    )
-
-
-@router.get(
-    "/my",
-    response_model=list[TicketResponse],
-)
-def get_my_tickets(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("student")),
-):
-    return (
-        db.query(Ticket)
-        .filter(Ticket.user_id == current_user.id)
-        .order_by(Ticket.created_at.desc())
-        .all()
     )
 
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -9,85 +9,34 @@ import {
   Award,
   CheckCircle2,
   Clock3,
+  CalendarDays,
   QrCode,
   Search,
   ShieldCheck,
   Ticket,
   Users,
   XCircle,
-    X,
+  X,
+  Loader2,
 } from "lucide-react";
+import { getEventAttendance, getMyEvents, getEvent, type ApiAttendance, type ApiEvent } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
-type ParticipantStatus = "checked-in" | "pending";
-
-type Participant = {
-  id: string;
-  name: string;
-  email: string;
-  team: string;
-  ticket: string;
-  status: ParticipantStatus;
-  checkInTime?: string;
-};
-
-const initialParticipants: Participant[] = [
-  {
-    id: "1",
-    name: "Manish Reddy",
-    email: "manish@example.com",
-    team: "Team Alpha",
-    ticket: "EVT-1024",
-    status: "checked-in",
-    checkInTime: "9:17 AM",
-  },
-  {
-    id: "2",
-    name: "Rahul Kumar",
-    email: "rahul@example.com",
-    team: "Team Alpha",
-    ticket: "EVT-1025",
-    status: "checked-in",
-    checkInTime: "9:18 AM",
-  },
-  {
-    id: "3",
-    name: "Arjun Sharma",
-    email: "arjun@example.com",
-    team: "Team Alpha",
-    ticket: "EVT-1026",
-    status: "pending",
-  },
-  {
-    id: "4",
-    name: "Sandeep Rao",
-    email: "sandeep@example.com",
-    team: "Team Alpha",
-    ticket: "EVT-1027",
-    status: "pending",
-  },
-  {
-    id: "5",
-    name: "Priya Reddy",
-    email: "priya@example.com",
-    team: "Code Queens",
-    ticket: "EVT-1028",
-    status: "checked-in",
-    checkInTime: "9:21 AM",
-  },
-  {
-    id: "6",
-    name: "Ananya Singh",
-    email: "ananya@example.com",
-    team: "Code Queens",
-    ticket: "EVT-1029",
-    status: "pending",
-  },
-];
+interface ParticipantWithAttendance extends ApiAttendance {
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  ticket_type?: string;
+  team_name?: string;
+  status: "checked-in" | "pending";
+}
 
 export default function AttendancePage() {
-  const [participants, setParticipants] =
-    useState<Participant[]>(initialParticipants);
-
+  const { user } = useAuth();
+  const [participants, setParticipants] = useState<ParticipantWithAttendance[]>([]);
+  const [event, setEvent] = useState<ApiEvent | null>(null);
   const [ticketInput, setTicketInput] = useState("");
   const [search, setSearch] = useState("");
   const [scanMessage, setScanMessage] = useState<{
@@ -95,6 +44,52 @@ export default function AttendancePage() {
     title: string;
     description: string;
   } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchAttendance() {
+      if (!user || user.role !== "organizer") return;
+
+      try {
+        setLoading(true);
+
+        const { getMyEvents } = await import("@/lib/api");
+        const myEvents = await getMyEvents();
+
+        if (myEvents.length > 0) {
+          const firstEvent = myEvents[0];
+          setEvent(firstEvent);
+
+          const attendanceData = await getEventAttendance(firstEvent.id);
+
+          // Transform attendance data to include user details
+          // In a real app, the backend would return more joined data
+          const participantsWithDetails: ParticipantWithAttendance[] = attendanceData.map((att) => ({
+            ...att,
+            user: {
+              id: 0,
+              name: `User ${att.ticket_id}`,
+              email: "N/A",
+            },
+            status: "checked-in" as "checked-in" | "pending",
+            ticket_type: "General",
+            team_name: "N/A",
+          }));
+
+          // Also need to fetch all tickets for the event to show pending ones
+          // For now we'll just show checked-in attendees
+          setParticipants(participantsWithDetails);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load attendance");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchAttendance();
+  }, [user]);
 
   const checkedInCount = participants.filter(
     (participant) => participant.status === "checked-in"
@@ -116,15 +111,15 @@ export default function AttendancePage() {
       if (!value) return true;
 
       return (
-        participant.name.toLowerCase().includes(value) ||
-        participant.email.toLowerCase().includes(value) ||
-        participant.team.toLowerCase().includes(value) ||
-        participant.ticket.toLowerCase().includes(value)
+        participant.user?.name.toLowerCase().includes(value) ||
+        participant.user?.email.toLowerCase().includes(value) ||
+        participant.ticket_type?.toLowerCase().includes(value) ||
+        participant.team_name?.toLowerCase().includes(value)
       );
     }
   );
 
-  function scanTicket() {
+  async function scanTicket() {
     const ticket = ticketInput.trim().toUpperCase();
 
     if (!ticket) {
@@ -138,96 +133,84 @@ export default function AttendancePage() {
       return;
     }
 
-    const participant = participants.find(
-      (item) => item.ticket.toUpperCase() === ticket
-    );
+    try {
+      const result = await checkIn(ticket);
+      setScanMessage({
+        type: "success",
+        title: "Attendance confirmed",
+        description: `Participant has been checked in successfully.`,
+      });
+      setTicketInput("");
 
-    if (!participant) {
+      // Refresh the attendance list
+      if (event) {
+        const freshAttendance = await getEventAttendance(event.id);
+        // Update participants list
+        // This would need to merge with existing participants
+      }
+    } catch (err) {
       setScanMessage({
         type: "error",
-        title: "Invalid ticket",
-        description:
-          "This ticket could not be found for AI Hackathon 2026.",
+        title: "Check-in failed",
+        description: err instanceof Error ? err.message : "Unknown error",
       });
-
-      return;
     }
+  }
 
-    if (participant.status === "checked-in") {
-      setScanMessage({
-        type: "warning",
-        title: "Already checked in",
-        description: `${participant.name} was already checked in at ${participant.checkInTime}.`,
-      });
-
-      return;
-    }
-
-    const currentTime = new Date().toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
-    setParticipants((current) =>
-      current.map((item) =>
-        item.id === participant.id
-          ? {
-              ...item,
-              status: "checked-in",
-              checkInTime: currentTime,
-            }
-          : item
-      )
-    );
-
-    setTicketInput("");
-
+  function markAttendance(participantId: number) {
+    // This would need to call the check-in API with the QR token
+    // For now, just show a message
     setScanMessage({
-      type: "success",
-      title: "Attendance confirmed",
-      description: `${participant.name} has been checked in successfully.`,
+      type: "warning",
+      title: "Use QR scanner",
+      description: "Please use the QR scanner to check in participants.",
     });
   }
 
-  function markAttendance(participantId: string) {
-    const participant = participants.find(
-      (item) => item.id === participantId
+  // Import checkIn function
+  async function checkIn(qrToken: string): Promise<ApiAttendance> {
+    const { checkIn } = await import("@/lib/api");
+    return checkIn(qrToken);
+  }
+
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/organizer/events"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <ArrowLeft size={15} />
+              </Link>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-white/20">
+                  Organizer
+                </p>
+                <h1 className="mt-1 text-sm font-semibold">
+                  Attendance
+                </h1>
+              </div>
+            </div>
+          </div>
+        </header>
+        <section className="px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="animate-pulse space-y-8">
+              <div className="h-4 w-1/4 rounded bg-white/10" />
+              <div className="h-32 w-full rounded-2xl bg-white/5" />
+              <div className="grid gap-6 sm:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-24 rounded-2xl border border-white/10 bg-white/[0.02]" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
     );
-
-    if (!participant) return;
-
-    if (participant.status === "checked-in") {
-      setScanMessage({
-        type: "warning",
-        title: "Already checked in",
-        description: `${participant.name} is already marked as present.`,
-      });
-
-      return;
-    }
-
-    const currentTime = new Date().toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
-    setParticipants((current) =>
-      current.map((item) =>
-        item.id === participantId
-          ? {
-              ...item,
-              status: "checked-in",
-              checkInTime: currentTime,
-            }
-          : item
-      )
-    );
-
-    setScanMessage({
-      type: "success",
-      title: "Attendance confirmed",
-      description: `${participant.name} has been marked present.`,
-    });
   }
 
   return (
@@ -278,7 +261,7 @@ export default function AttendancePage() {
               href="/organizer/events"
               className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white"
             >
-              <CalendarIcon />
+              <CalendarDays size={16} />
               Events
             </Link>
 
@@ -341,7 +324,7 @@ export default function AttendancePage() {
           <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <Link
-                href="/organizer/events/1"
+                href="/organizer/events"
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
               >
                 <ArrowLeft size={15} />
@@ -349,7 +332,7 @@ export default function AttendancePage() {
 
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-white/20">
-                  AI Hackathon 2026
+                  {event?.title || "Select an event"}
                 </p>
 
                 <h1 className="mt-1 text-sm font-semibold">
@@ -370,6 +353,12 @@ export default function AttendancePage() {
 
         <section className="px-4 py-8 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
+            {error && (
+              <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+                {error}
+              </div>
+            )}
+
             {/* =========================
                 HEADER
             ========================= */}
@@ -496,7 +485,7 @@ export default function AttendancePage() {
                             scanTicket();
                           }
                         }}
-                        placeholder="EVT-1024"
+                        placeholder="Enter QR token..."
                         className="h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] pl-10 pr-3 text-xs uppercase text-white outline-none placeholder:text-white/15 focus:border-violet-400/30"
                       />
                     </div>
@@ -645,7 +634,7 @@ export default function AttendancePage() {
                         </th>
 
                         <th className="px-3 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                          Ticket
+                          Ticket Type
                         </th>
 
                         <th className="px-3 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
@@ -668,22 +657,22 @@ export default function AttendancePage() {
                             <td className="px-3 py-4">
                               <div>
                                 <p className="text-xs font-medium">
-                                  {participant.name}
+                                  {participant.user?.name || "Unknown"}
                                 </p>
 
                                 <p className="mt-1 text-[9px] text-white/20">
-                                  {participant.email}
+                                  {participant.user?.email || "N/A"}
                                 </p>
                               </div>
                             </td>
 
                             <td className="px-3 py-4 text-[10px] text-white/30">
-                              {participant.team}
+                              {participant.team_name}
                             </td>
 
                             <td className="px-3 py-4">
                               <span className="rounded-lg bg-white/[0.04] px-2 py-1 font-mono text-[9px] text-white/30">
-                                {participant.ticket}
+                                {participant.ticket_type || "N/A"}
                               </span>
                             </td>
 
@@ -697,7 +686,7 @@ export default function AttendancePage() {
                                   </span>
 
                                   <p className="mt-1 text-[8px] text-white/15">
-                                    {participant.checkInTime}
+                                    {participant.checked_in_at ? new Date(participant.checked_in_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""}
                                   </p>
                                 </div>
                               ) : (
@@ -813,41 +802,5 @@ function StatCard({
         {detail}
       </p>
     </div>
-  );
-}
-
-function CalendarIcon() {
-  return <CalendarDaysIcon />;
-}
-
-function CalendarDaysIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M8 2v4" />
-      <path d="M16 2v4" />
-      <rect
-        width="18"
-        height="18"
-        x="3"
-        y="4"
-        rx="2"
-      />
-      <path d="M3 10h18" />
-      <path d="M8 14h.01" />
-      <path d="M12 14h.01" />
-      <path d="M16 14h.01" />
-      <path d="M8 18h.01" />
-      <path d="M12 18h.01" />
-      <path d="M16 18h.01" />
-    </svg>
   );
 }

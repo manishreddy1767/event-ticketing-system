@@ -1,50 +1,224 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
-  GraduationCap,
   Mail,
   Pencil,
   Save,
   ShieldCheck,
   User,
+  GraduationCap,
+  Building2,
+  CalendarDays,
+  IdCard,
 } from "lucide-react";
 
+import {
+  getMe,
+  updateMyProfile,
+  getStudentProfile,
+  updateStudentProfile,
+  type ApiUser,
+  type ApiStudentProfile,
+} from "@/lib/api";
+
 export default function ProfilePage() {
+  const [profile, setProfile] = useState<ApiUser | null>(null);
+  const [studentProfile, setStudentProfile] =
+    useState<ApiStudentProfile | null>(null);
+
   const [editing, setEditing] = useState(false);
 
-  const [profile, setProfile] = useState({
-    name: "Manish Reddy",
-    rollNumber: "23CSE042",
-    college: "Vardhaman College of Engineering",
-    course: "B.Tech Computer Science and Engineering",
-    year: "3rd Year",
-    email: "manish@example.com",
-  });
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
 
+  const [rollNumber, setRollNumber] = useState("");
+  const [department, setDepartment] = useState("");
+  const [year, setYear] = useState("");
+  const [college, setCollege] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  function handleSave() {
-    setEditing(false);
-    setSaved(true);
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        setLoading(true);
+        setError(null);
 
-    setTimeout(() => {
+        const userData = await getMe();
+        console.log("PROFILE: getMe() succeeded", userData);
+
+        const studentData = await getStudentProfile();
+        console.log(
+          "PROFILE: getStudentProfile() succeeded",
+          studentData,
+        );
+
+        setProfile(userData);
+        setStudentProfile(studentData);
+
+        setName(userData.name);
+        setEmail(userData.email);
+
+        setRollNumber(studentData.roll_number ?? "");
+        setDepartment(studentData.department ?? "");
+        setYear(studentData.year ?? "");
+        setCollege(studentData.college ?? "");
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load profile",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProfile();
+  }, []);
+
+  async function handleSave() {
+    if (
+      !name.trim() ||
+      !email.trim() ||
+      !rollNumber.trim() ||
+      !department.trim() ||
+      !year.trim() ||
+      !college.trim()
+    ) {
+      setError("Please fill in all profile fields.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
       setSaved(false);
-    }, 2500);
+
+      const [updatedUser, updatedStudent] =
+        await Promise.all([
+          updateMyProfile({
+            name: name.trim(),
+            email: email.trim(),
+          }),
+          updateStudentProfile({
+            roll_number: rollNumber.trim(),
+            department: department.trim(),
+            year: year.trim(),
+            college: college.trim(),
+          }),
+        ]);
+
+      setProfile(updatedUser);
+      setStudentProfile(updatedStudent);
+
+      setName(updatedUser.name);
+      setEmail(updatedUser.email);
+
+      setRollNumber(updatedStudent.roll_number ?? "");
+      setDepartment(updatedStudent.department ?? "");
+      setYear(updatedStudent.year ?? "");
+      setCollege(updatedStudent.college ?? "");
+
+      setEditing(false);
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 2500);
+    } catch (err) {
+      console.error("Failed to update profile:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update profile",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    if (profile) {
+      setName(profile.name);
+      setEmail(profile.email);
+    }
+
+    if (studentProfile) {
+      setRollNumber(studentProfile.roll_number ?? "");
+      setDepartment(studentProfile.department ?? "");
+      setYear(studentProfile.year ?? "");
+      setCollege(studentProfile.college ?? "");
+    }
+
+    setError(null);
+    setEditing(false);
+  }
+
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <div className="mx-auto flex min-h-screen max-w-4xl items-center justify-center px-4">
+          <div className="text-center">
+            <User className="mx-auto h-10 w-10 animate-pulse text-violet-300/50" />
+            <p className="mt-4 text-xs text-white/40">
+              Loading profile...
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error && !profile) {
+    return (
+      <main className="campus-background min-h-screen">
+        <div className="mx-auto flex min-h-screen max-w-4xl items-center justify-center px-4">
+          <div className="text-center">
+            <ShieldCheck className="mx-auto h-12 w-12 text-red-300/50" />
+
+            <h2 className="mt-4 text-lg font-semibold">
+              Unable to load profile
+            </h2>
+
+            <p className="mt-2 text-xs text-white/40">
+              {error}
+            </p>
+
+            <Link
+              href="/events"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-xs font-semibold text-black transition hover:bg-white/90"
+            >
+              <ArrowLeft size={14} />
+              Back home
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="campus-background min-h-screen">
-      {/* Header */}
 
       <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+
           <div className="flex items-center gap-3">
+
             <Link
-              href="/"
+              href="/events"
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
             >
               <ArrowLeft size={15} />
@@ -59,6 +233,7 @@ export default function ProfilePage() {
                 My Profile
               </h1>
             </div>
+
           </div>
 
           <Link
@@ -67,12 +242,13 @@ export default function ProfilePage() {
           >
             My Tickets
           </Link>
+
         </div>
       </header>
 
       <section className="px-4 py-10 sm:px-6 lg:py-14">
+
         <div className="mx-auto max-w-4xl">
-          {/* Intro */}
 
           <div>
             <p className="text-sm font-medium text-violet-300">
@@ -84,27 +260,41 @@ export default function ProfilePage() {
             </h2>
 
             <p className="mt-3 max-w-2xl text-xs leading-5 text-white/35">
-              Keep your student information up to date. These
-              details will be used for event registrations,
-              tickets, attendance records, and certificates.
+              Manage the account information connected to your
+              Evently registrations, tickets, attendance, and
+              certificates.
             </p>
           </div>
 
-          {/* Profile card */}
+          {error && (
+            <div className="mt-6 rounded-xl border border-red-400/10 bg-red-400/[0.04] px-4 py-3 text-xs text-red-200">
+              {error}
+            </div>
+          )}
 
           <div className="mt-8 overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02]">
-            {/* Profile heading */}
 
             <div className="border-b border-white/[0.06] p-6 sm:p-8">
+
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+
                 <div className="flex items-center gap-4">
+
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-400/10 text-xl font-semibold text-violet-300">
-                    MR
+                    {profile?.name
+                      ? profile.name
+                          .split(" ")
+                          .map((part) => part[0])
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase()
+                      : "ST"}
                   </div>
 
                   <div>
+
                     <h3 className="text-base font-semibold">
-                      {profile.name}
+                      {profile?.name}
                     </h3>
 
                     <p className="mt-1 text-[10px] text-white/25">
@@ -113,120 +303,136 @@ export default function ProfilePage() {
 
                     <div className="mt-2 flex items-center gap-1.5 text-[9px] text-emerald-300">
                       <CheckCircle2 size={11} />
-                      Profile verified
+
+                      {profile?.status === "active"
+                        ? "Account active"
+                        : "Account inactive"}
                     </div>
+
                   </div>
+
                 </div>
 
                 {!editing ? (
+
                   <button
                     type="button"
-                    onClick={() => setEditing(true)}
+                    onClick={() => {
+                      setError(null);
+                      setEditing(true);
+                    }}
                     className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-2.5 text-[10px] font-medium text-white/50 transition hover:bg-white/[0.06] hover:text-white"
                   >
                     <Pencil size={13} />
                     Edit profile
                   </button>
+
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[10px] font-semibold text-black transition hover:bg-white/90"
-                  >
-                    <Save size={13} />
-                    Save changes
-                  </button>
+
+                  <div className="flex gap-2">
+
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      disabled={saving}
+                      className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-2.5 text-[10px] font-medium text-white/50 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[10px] font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save size={13} />
+                      {saving ? "Saving..." : "Save changes"}
+                    </button>
+
+                  </div>
+
                 )}
+
               </div>
+
             </div>
 
-            {/* Fields */}
-
             <div className="grid gap-px bg-white/[0.04] sm:grid-cols-2">
+
               <ProfileField
                 icon={<User size={15} />}
                 label="Full name"
-                value={profile.name}
+                value={name}
                 editing={editing}
-                onChange={(value) =>
-                  setProfile({
-                    ...profile,
-                    name: value,
-                  })
-                }
-              />
-
-              <ProfileField
-                icon={<GraduationCap size={15} />}
-                label="Roll number"
-                value={profile.rollNumber}
-                editing={editing}
-                onChange={(value) =>
-                  setProfile({
-                    ...profile,
-                    rollNumber: value,
-                  })
-                }
+                onChange={setName}
               />
 
               <ProfileField
                 icon={<Mail size={15} />}
                 label="Email address"
-                value={profile.email}
+                value={email}
                 editing={editing}
-                onChange={(value) =>
-                  setProfile({
-                    ...profile,
-                    email: value,
-                  })
-                }
+                onChange={setEmail}
+                type="email"
+              />
+
+              <ProfileField
+                icon={<IdCard size={15} />}
+                label="Roll number"
+                value={rollNumber}
+                editing={editing}
+                onChange={setRollNumber}
               />
 
               <ProfileField
                 icon={<GraduationCap size={15} />}
-                label="College"
-                value={profile.college}
+                label="Department"
+                value={department}
                 editing={editing}
-                onChange={(value) =>
-                  setProfile({
-                    ...profile,
-                    college: value,
-                  })
-                }
+                onChange={setDepartment}
               />
 
               <ProfileField
-                icon={<GraduationCap size={15} />}
-                label="Course"
-                value={profile.course}
-                editing={editing}
-                onChange={(value) =>
-                  setProfile({
-                    ...profile,
-                    course: value,
-                  })
-                }
-              />
-
-              <ProfileField
-                icon={<GraduationCap size={15} />}
+                icon={<CalendarDays size={15} />}
                 label="Year"
-                value={profile.year}
+                value={year}
                 editing={editing}
-                onChange={(value) =>
-                  setProfile({
-                    ...profile,
-                    year: value,
-                  })
-                }
+                onChange={setYear}
               />
+
+              <ProfileField
+                icon={<Building2 size={15} />}
+                label="College"
+                value={college}
+                editing={editing}
+                onChange={setCollege}
+              />
+
+              <ProfileField
+                icon={<ShieldCheck size={15} />}
+                label="Role"
+                value={profile?.role || "student"}
+                editing={false}
+                onChange={() => {}}
+              />
+
+              <ProfileField
+                icon={<CheckCircle2 size={15} />}
+                label="Account status"
+                value={profile?.status || "active"}
+                editing={false}
+                onChange={() => {}}
+              />
+
             </div>
+
           </div>
 
-          {/* Account information */}
-
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
+
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
+
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-400/[0.08] text-emerald-300">
                 <ShieldCheck size={17} />
               </div>
@@ -236,22 +442,21 @@ export default function ProfilePage() {
               </h3>
 
               <p className="mt-2 text-[10px] leading-5 text-white/25">
-                Your account information is used to securely
-                connect your registrations, tickets, attendance,
+                Your account information is securely connected
+                to your registrations, tickets, attendance,
                 and certificates.
               </p>
 
-              <button
-                type="button"
-                className="mt-4 text-[10px] font-medium text-white/40 transition hover:text-white"
-              >
-                Change password →
-              </button>
+              <p className="mt-4 text-[10px] text-white/30">
+                Password management will be added separately.
+              </p>
+
             </div>
 
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
+
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/[0.08] text-violet-300">
-                <GraduationCap size={17} />
+                <User size={17} />
               </div>
 
               <h3 className="mt-4 text-xs font-semibold">
@@ -259,46 +464,17 @@ export default function ProfilePage() {
               </h3>
 
               <p className="mt-2 text-[10px] leading-5 text-white/25">
-                Your roll number identifies you when registering
-                for events and helps organizers issue certificates
-                to the correct participant.
+                Your roll number, department, year, and college
+                are now stored securely with your student account.
               </p>
 
-              <p className="mt-4 font-mono text-[10px] text-violet-300/70">
-                {profile.rollNumber}
-              </p>
             </div>
+
           </div>
-
-          {/* Important note */}
-
-          <div className="mt-6 rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.025] p-5">
-            <div className="flex items-start gap-3">
-              <ShieldCheck
-                size={17}
-                className="mt-0.5 shrink-0 text-cyan-300"
-              />
-
-              <div>
-                <p className="text-xs font-medium">
-                  Your identity stays connected
-                </p>
-
-                <p className="mt-1 text-[10px] leading-5 text-white/25">
-                  When the real backend is connected, your
-                  student ID will link your registrations,
-                  individual tickets, QR codes, attendance, and
-                  certificates together. You won't need to enter
-                  your roll number every time you register.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Saved notification */}
 
           {saved && (
             <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-emerald-400/10 bg-[#0d1513] px-4 py-3 shadow-2xl">
+
               <CheckCircle2
                 size={15}
                 className="text-emerald-300"
@@ -307,13 +483,18 @@ export default function ProfilePage() {
               <span className="text-[10px] font-medium text-emerald-200">
                 Profile changes saved
               </span>
+
             </div>
           )}
+
         </div>
+
       </section>
+
     </main>
   );
 }
+
 
 function ProfileField({
   icon,
@@ -321,34 +502,45 @@ function ProfileField({
   value,
   editing,
   onChange,
+  type = "text",
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   editing: boolean;
   onChange: (value: string) => void;
+  type?: string;
 }) {
   return (
     <div className="bg-[#090d15] p-5 sm:p-6">
+
       <div className="flex items-center gap-2 text-white/20">
+
         {icon}
 
         <span className="text-[9px] uppercase tracking-wider">
           {label}
         </span>
+
       </div>
 
       {editing ? (
+
         <input
+          type={type}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="mt-3 h-10 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 text-xs text-white outline-none focus:border-violet-400/30"
         />
+
       ) : (
+
         <p className="mt-3 text-xs text-white/65">
-          {value}
+          {value || "Not provided"}
         </p>
+
       )}
+
     </div>
   );
 }

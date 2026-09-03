@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, require_role
 from app.models.event import Event
 from app.models.organizer import Organizer
+from app.models.ticket import Ticket
 from app.models.user import User
 
 
@@ -220,4 +222,38 @@ def reject_event(
         "message": "Event rejected successfully",
         "event_id": event.id,
         "status": event.status,
+    }
+
+
+# =========================
+# ADMIN DASHBOARD STATS
+# =========================
+
+@router.get("/stats")
+def get_admin_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    total_students = db.query(User).filter(User.role == "student").count()
+    total_organizers = db.query(User).filter(User.role == "organizer").count()
+    active_organizers = (
+        db.query(User)
+        .filter(User.role == "organizer", User.status == "active")
+        .count()
+    )
+    total_events = db.query(Event).count()
+    upcoming_events = (
+        db.query(Event)
+        .filter(Event.status == "approved")
+        .count()
+    )
+    total_registrations = db.query(Ticket).count()
+
+    return {
+        "total_students": total_students,
+        "total_organizers": total_organizers,
+        "active_organizers": active_organizers,
+        "total_events": total_events,
+        "upcoming_events": upcoming_events,
+        "total_registrations": total_registrations,
     }

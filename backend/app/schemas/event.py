@@ -24,8 +24,10 @@ class EventResponse(BaseModel):
     venue: str
     event_date: datetime
     capacity: int
+    registered_count: int
     max_discount_percent: Decimal
     status: str
+    certificate_template_path: str | None
     created_at: datetime
 
     class Config:

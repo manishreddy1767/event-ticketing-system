@@ -31,3 +31,14 @@ class TeamResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TeamInvitationResponse(BaseModel):
+    id: int
+    team_id: int
+    invited_user_id: int
+    status: str
+    created_at: datetime
+    responded_at: datetime | None = None
+
+    class Config:
+        from_attributes = True

@@ -1,100 +1,103 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   Activity,
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  Loader2,
   ShieldCheck,
   Ticket,
   TrendingUp,
   Users,
   UserCog,
 } from "lucide-react";
-
-const stats = [
-  {
-    label: "Total students",
-    value: "1,284",
-    detail: "+86 this month",
-    icon: Users,
-  },
-  {
-    label: "Organizers",
-    value: "42",
-    detail: "38 active",
-    icon: UserCog,
-  },
-  {
-    label: "Events",
-    value: "76",
-    detail: "12 upcoming",
-    icon: CalendarDays,
-  },
-  {
-    label: "Registrations",
-    value: "8,421",
-    detail: "+14.8% this month",
-    icon: Ticket,
-  },
-];
-
-const recentEvents = [
-  {
-    name: "AI Hackathon 2026",
-    organizer: "CSE Department",
-    registrations: 248,
-    status: "Live",
-  },
-  {
-    name: "Tech Symposium 2026",
-    organizer: "IEEE Student Branch",
-    registrations: 184,
-    status: "Upcoming",
-  },
-  {
-    name: "CodeSprint",
-    organizer: "Coding Club",
-    registrations: 312,
-    status: "Upcoming",
-  },
-  {
-    name: "Innovation Expo",
-    organizer: "Innovation Cell",
-    registrations: 96,
-    status: "Completed",
-  },
-];
-
-const recentOrganizers = [
-  {
-    name: "CSE Department",
-    email: "cse@college.edu",
-    events: 12,
-    status: "Active",
-  },
-  {
-    name: "IEEE Student Branch",
-    email: "ieee@college.edu",
-    events: 8,
-    status: "Active",
-  },
-  {
-    name: "Coding Club",
-    email: "coding@college.edu",
-    events: 6,
-    status: "Active",
-  },
-  {
-    name: "Innovation Cell",
-    email: "innovation@college.edu",
-    events: 9,
-    status: "Active",
-  },
-];
+import { getAdminStats, getPendingEvents, getPendingOrganizers, type ApiAdminStats } from "@/lib/api";
 
 export default function AdminDashboardPage() {
+  const [stats, setStats] = useState<ApiAdminStats | null>(null);
+  const [recentEvents, setRecentEvents] = useState<any[]>([]);
+  const [recentOrganizers, setRecentOrganizers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const [statsData, eventsData, organizersData] = await Promise.all([
+          getAdminStats(),
+          getPendingEvents(),
+          getPendingOrganizers(),
+        ]);
+        setStats(statsData);
+        setRecentEvents(eventsData);
+        setRecentOrganizers(organizersData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="animate-pulse space-y-8">
+            <div className="h-4 w-1/4 rounded bg-white/10" />
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-32 rounded-2xl border border-white/10 bg-white/[0.02]" />
+              ))}
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-2 h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
+              <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
+              <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const statCards = stats
+    ? [
+        {
+          label: "Total students",
+          value: stats.total_students.toLocaleString(),
+          detail: `${stats.total_students} registered`,
+          icon: Users,
+        },
+        {
+          label: "Organizers",
+          value: stats.total_organizers.toLocaleString(),
+          detail: `${stats.active_organizers} active`,
+          icon: UserCog,
+        },
+        {
+          label: "Events",
+          value: stats.total_events.toLocaleString(),
+          detail: `${stats.upcoming_events} upcoming`,
+          icon: CalendarDays,
+        },
+        {
+          label: "Registrations",
+          value: stats.total_registrations.toLocaleString(),
+          detail: "All time",
+          icon: Ticket,
+        },
+      ]
+    : [];
+
   return (
     <main className="campus-background min-h-screen">
       {/* Header */}
@@ -164,7 +167,7 @@ export default function AdminDashboardPage() {
           {/* Stats */}
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {stats.map((stat) => {
+            {statCards.map((stat) => {
               const Icon = stat.icon;
 
               return (
@@ -301,7 +304,7 @@ export default function AdminDashboardPage() {
                   </p>
 
                   <p className="mt-1 text-xs text-white/40">
-                    Recent platform events
+                    Pending events
                   </p>
                 </div>
 
@@ -315,44 +318,50 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="divide-y divide-white/[0.05]">
-                {recentEvents.map((event) => (
-                  <div
-                    key={event.name}
-                    className="flex items-center justify-between gap-4 px-5 py-4"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium">
-                        {event.name}
-                      </p>
-
-                      <p className="mt-1 truncate text-[9px] text-white/20">
-                        {event.organizer}
-                      </p>
-                    </div>
-
-                    <div className="shrink-0 text-right">
-                      <p className="text-[10px] text-white/45">
-                        {event.registrations}
-                      </p>
-
-                      <p className="mt-1 text-[8px] text-white/20">
-                        registrations
-                      </p>
-                    </div>
-
-                    <span
-                      className={`hidden rounded-full px-2.5 py-1 text-[8px] sm:block ${
-                        event.status === "Live"
-                          ? "bg-emerald-400/10 text-emerald-300"
-                          : event.status === "Completed"
-                            ? "bg-white/[0.05] text-white/30"
-                            : "bg-violet-400/10 text-violet-300"
-                      }`}
+                {recentEvents.length > 0 ? (
+                  recentEvents.map((event: any) => (
+                    <div
+                      key={event.id}
+                      className="flex items-center justify-between gap-4 px-5 py-4"
                     >
-                      {event.status}
-                    </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">
+                          {event.title}
+                        </p>
+
+                        <p className="mt-1 truncate text-[9px] text-white/20">
+                          Organizer ID: {event.organizer_id}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <p className="text-[10px] text-white/45">
+                          Capacity: {event.capacity}
+                        </p>
+
+                        <p className="mt-1 text-[8px] text-white/20">
+                          max discount: {event.max_discount_percent}%
+                        </p>
+                      </div>
+
+                      <span
+                        className={`hidden rounded-full px-2.5 py-1 text-[8px] sm:block ${
+                          event.status === "approved"
+                            ? "bg-emerald-400/10 text-emerald-300"
+                            : event.status === "rejected"
+                            ? "bg-red-400/10 text-red-300"
+                            : "bg-violet-400/10 text-violet-300"
+                        }`}
+                      >
+                        {event.status}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-5 py-8 text-center">
+                    <p className="text-[10px] text-white/30">No pending events</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 

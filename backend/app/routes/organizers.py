@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db
+from app.core.dependencies import get_db, require_role
 from app.core.security import hash_password
+from app.models.event import Event
 from app.models.organizer import Organizer
+from app.models.ticket import Ticket
+from app.models.ticket_type import TicketType
 from app.models.user import User
 from app.schemas.organizer import (
     OrganizerRegisterRequest,
@@ -71,3 +74,57 @@ def register_organizer(
         "description": organizer.description,
         "created_at": user.created_at,
     }
+
+
+@router.get(
+    "/events/{event_id}/registrations",
+)
+def get_event_registrations(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer")),
+):
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.organizer_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    tickets = (
+        db.query(Ticket)
+        .join(TicketType, Ticket.ticket_type_id == TicketType.id)
+        .filter(TicketType.event_id == event_id)
+        .all()
+    )
+
+    return [
+        {
+            "id": ticket.id,
+            "ticket_type": ticket.ticket_type.name,
+            "quantity": ticket.quantity,
+            "total_amount": float(ticket.total_amount),
+            "discount_percent": float(ticket.discount_percent),
+            "discount_amount": float(ticket.discount_amount),
+            "status": ticket.status,
+            "qr_token": ticket.qr_token,
+            "team_id": ticket.team_id,
+            "created_at": ticket.created_at,
+            "user": {
+                "id": ticket.user.id,
+                "name": ticket.user.name,
+                "email": ticket.user.email,
+            }
+            if ticket.user
+            else None,
+        }
+        for ticket in tickets
+    ]

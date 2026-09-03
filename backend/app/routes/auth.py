@@ -18,12 +18,6 @@ from app.schemas.auth import (
     RegisterResponse,
 )
 
-from app.core.security import (
-    create_access_token,
-    hash_password,
-    verify_password,
-)
-
 from app.models.organizer import Organizer
 
 from app.schemas.organizer import (

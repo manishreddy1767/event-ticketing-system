@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -14,11 +15,13 @@ import {
   Building2,
   Phone,
 } from "lucide-react";
+import { registerOrganizer } from "@/lib/api";
 
 export default function OrganizerRegisterPage() {
+  const router = useRouter();
+
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [organizerName, setOrganizerName] = useState("");
   const [fullName, setFullName] = useState("");
@@ -27,14 +30,14 @@ export default function OrganizerRegisterPage() {
   const [phone, setPhone] = useState("");
   const [reason, setReason] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] =
-    useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
 
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
@@ -63,9 +66,7 @@ export default function OrganizerRegisterPage() {
     }
 
     if (password.length < 8) {
-      setError(
-        "Password must contain at least 8 characters."
-      );
+      setError("Password must contain at least 8 characters.");
       return;
     }
 
@@ -75,91 +76,52 @@ export default function OrganizerRegisterPage() {
     }
 
     if (!agreed) {
-      setError(
-        "Please agree to the Evently terms before continuing."
-      );
+      setError("Please agree to the Evently terms before continuing.");
       return;
     }
 
-    /*
-     * Organizer account creation and admin approval
-     * will be connected to the backend later.
-     */
-    setSubmitted(true);
+    setLoading(true);
+
+    try {
+      await registerOrganizer({
+        name: fullName,
+        email,
+        password,
+        organization_name: organizerName,
+        phone,
+        description: reason,
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (submitted) {
     return (
       <main className="campus-background min-h-screen">
-        <div className="flex min-h-screen items-center justify-center px-4">
-          <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0c101a]/95 p-8 text-center shadow-2xl">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300">
-              <ShieldCheck size={28} />
-            </div>
-
-            <p className="mt-7 text-sm font-medium text-amber-300">
-              Application submitted
-            </p>
-
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-              Awaiting approval.
-            </h1>
-
-            <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-white/40">
-              Your organizer application has been submitted.
-              An Evently administrator must review and approve
-              your account before you can manage events.
-            </p>
-
-            <div className="mt-7 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 text-left">
-              <p className="text-[9px] uppercase tracking-wider text-white/20">
-                Application
-              </p>
-
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[10px] text-white/25">
-                    Organization
-                  </span>
-
-                  <span className="text-xs text-white/60">
-                    {organizerName}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[10px] text-white/25">
-                    Applicant
-                  </span>
-
-                  <span className="text-xs text-white/60">
-                    {fullName}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[10px] text-white/25">
-                    Status
-                  </span>
-
-                  <span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-[9px] text-amber-300">
-                    Pending
-                  </span>
-                </div>
+        <div className="flex min-h-screen items-center justify-center px-4 py-10">
+          <div className="w-full max-w-md text-center">
+            <div className="mb-6 flex items-center justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/20">
+                <Check className="h-8 w-8 text-emerald-400" />
               </div>
             </div>
 
-            <p className="mt-5 text-[10px] leading-5 text-white/25">
-              The backend will generate a unique Organizer ID
-              after the application is created.
+            <h1 className="text-2xl font-bold tracking-tight">Application submitted</h1>
+
+            <p className="mt-3 text-sm text-white/50">
+              Your organizer application has been submitted for review.
+              You'll be notified via email once it's approved.
             </p>
 
             <Link
               href="/login"
-              className="mt-6 flex h-12 items-center justify-center gap-2 rounded-xl bg-white text-xs font-semibold text-black transition hover:bg-white/90"
+              className="mt-8 block rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90"
             >
               Back to sign in
-              <ArrowRight size={15} />
             </Link>
           </div>
         </div>
@@ -170,7 +132,7 @@ export default function OrganizerRegisterPage() {
   return (
     <main className="campus-background min-h-screen">
       <div className="flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="w-full max-w-lg">
+        <div className="w-full max-w-md">
           {/* Brand */}
 
           <div className="mb-8 text-center">
@@ -188,90 +150,65 @@ export default function OrganizerRegisterPage() {
             </Link>
 
             <p className="mt-5 text-xs text-white/30">
-              Apply to become an event organizer
+              College event management platform
             </p>
           </div>
 
           {/* Card */}
 
-          <div className="rounded-[2rem] border border-white/10 bg-[#0c101a]/95 p-6 shadow-2xl sm:p-8">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-              <Building2 size={19} />
-            </div>
+          <div className="rounded-[1.5rem] border border-white/10 bg-[#0c101a]/95 p-6 sm:p-8 backdrop-blur-xl shadow-2xl">
+            <h1 className="text-2xl font-bold tracking-tight">Organizer Registration</h1>
 
-            <p className="mt-6 text-sm font-medium text-violet-300">
-              Organizer registration
+            <p className="mt-2 text-sm text-white/50">
+              Apply to create and manage events on Evently
             </p>
 
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">
-              Apply to organize.
-            </h1>
+            {error && (
+              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+                {error}
+              </div>
+            )}
 
-            <p className="mt-3 text-xs leading-5 text-white/35">
-              Submit your organization details. An Evently
-              administrator will review your application before
-              organizer access is granted.
-            </p>
-
-            <form
-              onSubmit={handleSubmit}
-              className="mt-8 space-y-5"
-            >
-              {/* Organization */}
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+              {/* Organization Name */}
 
               <div>
-                <label
-                  htmlFor="organizerName"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  Organization / club name
+                <label htmlFor="organizerName" className="mb-1.5 block text-sm font-medium">
+                  Organization Name
                 </label>
 
                 <div className="relative">
-                  <Building2
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <Building2 className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="organizerName"
                     type="text"
                     value={organizerName}
-                    onChange={(event) =>
-                      setOrganizerName(event.target.value)
-                    }
-                    placeholder="CSE Department / Coding Club"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-4 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    onChange={(e) => setOrganizerName(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-4 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="CSE Department"
+                    disabled={loading}
                   />
                 </div>
               </div>
 
-              {/* Applicant name */}
+              {/* Full Name */}
 
               <div>
-                <label
-                  htmlFor="fullName"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  Your full name
+                <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium">
+                  Full Name
                 </label>
 
                 <div className="relative">
-                  <UserRound
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <UserRound className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="fullName"
                     type="text"
-                    value={fullName}
-                    onChange={(event) =>
-                      setFullName(event.target.value)
-                    }
-                    placeholder="Your full name"
                     autoComplete="name"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-4 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-4 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="Dr. John Doe"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -279,29 +216,21 @@ export default function OrganizerRegisterPage() {
               {/* Email */}
 
               <div>
-                <label
-                  htmlFor="email"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  College email
+                <label htmlFor="email" className="mb-1.5 block text-sm font-medium">
+                  College Email
                 </label>
 
                 <div className="relative">
-                  <Mail
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="email"
                     type="email"
-                    value={email}
-                    onChange={(event) =>
-                      setEmail(event.target.value)
-                    }
-                    placeholder="organizer@college.edu"
                     autoComplete="email"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-4 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-4 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="dept@college.edu"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -309,248 +238,189 @@ export default function OrganizerRegisterPage() {
               {/* Department */}
 
               <div>
-                <label
-                  htmlFor="department"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
+                <label htmlFor="department" className="mb-1.5 block text-sm font-medium">
                   Department
                 </label>
 
-                <input
-                  id="department"
-                  type="text"
-                  value={department}
-                  onChange={(event) =>
-                    setDepartment(event.target.value)
-                  }
-                  placeholder="Computer Science & Engineering"
-                  className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] px-4 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
-                />
+                <div className="relative">
+                  <Building2 className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
+                  <input
+                    id="department"
+                    type="text"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-4 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="Computer Science"
+                    disabled={loading}
+                  />
+                </div>
               </div>
 
               {/* Phone */}
 
               <div>
-                <label
-                  htmlFor="phone"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  Phone number
+                <label htmlFor="phone" className="mb-1.5 block text-sm font-medium">
+                  Phone Number
                 </label>
 
                 <div className="relative">
-                  <Phone
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="phone"
                     type="tel"
                     value={phone}
-                    onChange={(event) =>
-                      setPhone(event.target.value)
-                    }
-                    placeholder="+91 98765 43210"
-                    autoComplete="tel"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-4 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-4 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="+91 9876543210"
+                    disabled={loading}
                   />
                 </div>
               </div>
 
-              {/* Reason */}
+              {/* Reason/Description */}
 
               <div>
-                <label
-                  htmlFor="reason"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  Purpose
-                  <span className="ml-1 normal-case text-white/15">
-                    (optional)
-                  </span>
+                <label htmlFor="reason" className="mb-1.5 block text-sm font-medium">
+                  Description (Optional)
                 </label>
 
                 <textarea
                   id="reason"
                   value={reason}
-                  onChange={(event) =>
-                    setReason(event.target.value)
-                  }
-                  placeholder="Tell us briefly what type of events you plan to organize..."
+                  onChange={(e) => setReason(e.target.value)}
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                  className="h-24 w-full rounded-xl border border-white/10 bg-white/[0.02] p-3 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 placeholder:text-white/20"
+                  placeholder="Briefly describe your organization and the types of events you plan to host..."
+                  disabled={loading}
                 />
               </div>
 
               {/* Password */}
 
               <div>
-                <label
-                  htmlFor="password"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
+                <label htmlFor="password" className="mb-1.5 block text-sm font-medium">
                   Password
                 </label>
 
                 <div className="relative">
-                  <LockKeyhole
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="password"
-                    type={
-                      showPassword
-                        ? "text"
-                        : "password"
-                    }
-                    value={password}
-                    onChange={(event) =>
-                      setPassword(event.target.value)
-                    }
-                    placeholder="At least 8 characters"
+                    type={showPassword ? "text" : "password"}
                     autoComplete="new-password"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-11 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-12 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="••••••••"
+                    disabled={loading}
                   />
-
                   <button
                     type="button"
-                    onClick={() =>
-                      setShowPassword((current) => !current)
-                    }
-                    aria-label={
-                      showPassword
-                        ? "Hide password"
-                        : "Show password"
-                    }
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/25 transition hover:text-white/60"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
-                    {showPassword ? (
-                      <EyeOff size={15} />
-                    ) : (
-                      <Eye size={15} />
-                    )}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
-              {/* Confirm password */}
+              {/* Confirm Password */}
 
               <div>
-                <label
-                  htmlFor="confirmPassword"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  Confirm password
+                <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium">
+                  Confirm Password
                 </label>
 
                 <div className="relative">
-                  <LockKeyhole
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="confirmPassword"
-                    type={
-                      showConfirmPassword
-                        ? "text"
-                        : "password"
-                    }
-                    value={confirmPassword}
-                    onChange={(event) =>
-                      setConfirmPassword(event.target.value)
-                    }
-                    placeholder="Repeat your password"
+                    type={showConfirmPassword ? "text" : "password"}
                     autoComplete="new-password"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-11 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-12 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="••••••••"
+                    disabled={loading}
                   />
-
                   <button
                     type="button"
-                    onClick={() =>
-                      setShowConfirmPassword(
-                        (current) => !current
-                      )
-                    }
-                    aria-label={
-                      showConfirmPassword
-                        ? "Hide password"
-                        : "Show password"
-                    }
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/25 transition hover:text-white/60"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                   >
-                    {showConfirmPassword ? (
-                      <EyeOff size={15} />
-                    ) : (
-                      <Eye size={15} />
-                    )}
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
               {/* Terms */}
 
-              <label className="flex cursor-pointer items-start gap-2.5">
+              <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={agreed}
-                  onChange={(event) =>
-                    setAgreed(event.target.checked)
-                  }
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/10 bg-white/[0.03] accent-violet-400"
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/[0.02] text-violet-500 focus:ring-violet-500/50"
                 />
-
-                <span className="text-[10px] leading-4 text-white/30">
-                  I confirm that the information provided is
-                  accurate and agree to Evently&apos;s organizer
-                  terms and platform policies.
+                <span className="text-sm text-white/60">
+                  I agree to the{" "}
+                  <a href="#" className="underline hover:text-white">
+                    Evently Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="#" className="underline hover:text-white">
+                    Privacy Policy
+                  </a>
                 </span>
               </label>
-
-              {/* Error */}
-
-              {error && (
-                <div className="rounded-xl border border-red-400/10 bg-red-400/[0.04] px-4 py-3 text-[10px] leading-4 text-red-300">
-                  {error}
-                </div>
-              )}
 
               {/* Submit */}
 
               <button
                 type="submit"
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:bg-white/90"
+                disabled={loading}
+                className="group w-full rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Submit organizer application
-                <ArrowRight size={15} />
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg
+                      className="animate-spin h-5 w-5"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Submitting application...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    Submit application
+                    <ArrowRight size={16} />
+                  </span>
+                )}
               </button>
             </form>
 
-            {/* Existing account */}
-
-            <div className="mt-7 border-t border-white/[0.07] pt-6 text-center">
-              <p className="text-[10px] text-white/25">
-                Already have an Evently account?
-              </p>
-
-              <Link
-                href="/login"
-                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-violet-300 transition hover:text-violet-200"
-              >
+            <p className="mt-6 text-center text-xs text-white/30">
+              Already have an account?{" "}
+              <Link href="/login" className="underline hover:text-white">
                 Sign in
-                <ArrowRight size={12} />
               </Link>
-            </div>
-          </div>
-
-          {/* Approval note */}
-
-          <div className="mt-5 flex items-center justify-center gap-2 text-[9px] text-white/20">
-            <ShieldCheck size={11} />
-            Organizer accounts require admin approval.
+            </p>
           </div>
         </div>
       </div>

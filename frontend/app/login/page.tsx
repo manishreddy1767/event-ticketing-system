@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import {
@@ -10,31 +11,53 @@ import {
   Mail,
   ShieldCheck,
 } from "lucide-react";
+import { login, type ApiUser } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { login: authLogin } = useAuth();
+
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
+    setLoading(true);
 
     if (!email.trim() || !password.trim()) {
       setError("Enter your email and password to continue.");
+      setLoading(false);
       return;
     }
 
-    /*
-     * Authentication will be connected to the backend later.
-     * The backend will determine whether the account belongs
-     * to a student, organizer, or admin.
-     */
-    setError(
-      "Authentication is not connected yet. The backend will handle login."
-    );
+    try {
+      const response = await login({ email, password });
+      authLogin(response.access_token, response.role);
+
+      // Redirect based on role
+      switch (response.role) {
+        case "admin":
+          router.push("/admin/dashboard");
+          break;
+        case "organizer":
+          router.push("/organizer/dashboard");
+          break;
+        case "student":
+        default:
+          router.push("/events");
+          break;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -64,54 +87,38 @@ export default function LoginPage() {
 
           {/* Card */}
 
-          <div className="rounded-[2rem] border border-white/10 bg-[#0c101a]/95 p-6 shadow-2xl sm:p-8">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-              <ShieldCheck size={19} />
-            </div>
+          <div className="rounded-[1.5rem] border border-white/10 bg-[#0c101a]/95 p-6 sm:p-8 backdrop-blur-xl shadow-2xl">
+            <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
 
-            <p className="mt-6 text-sm font-medium text-violet-300">
-              Welcome back
+            <p className="mt-2 text-sm text-white/50">
+              Sign in to your account to continue
             </p>
 
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">
-              Sign in.
-            </h1>
+            {error && (
+              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+                {error}
+              </div>
+            )}
 
-            <p className="mt-3 text-xs leading-5 text-white/35">
-              Sign in to manage your events, tickets, teams,
-              attendance, and certificates.
-            </p>
-
-            <form
-              onSubmit={handleSubmit}
-              className="mt-8 space-y-5"
-            >
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
               {/* Email */}
 
               <div>
-                <label
-                  htmlFor="email"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-white/30"
-                >
-                  Email address
+                <label htmlFor="email" className="mb-1.5 block text-sm font-medium">
+                  Email
                 </label>
 
                 <div className="relative">
-                  <Mail
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="email"
                     type="email"
-                    value={email}
-                    onChange={(event) =>
-                      setEmail(event.target.value)
-                    }
-                    placeholder="you@college.edu"
                     autoComplete="email"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-4 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-4 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="you@college.edu"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -119,131 +126,112 @@ export default function LoginPage() {
               {/* Password */}
 
               <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label
-                    htmlFor="password"
-                    className="text-[10px] font-medium uppercase tracking-wider text-white/30"
-                  >
-                    Password
-                  </label>
-
-                  <button
-                    type="button"
-                    className="text-[9px] text-violet-300 transition hover:text-violet-200"
-                    onClick={() =>
-                      setError(
-                        "Password reset will be connected to the backend later."
-                      )
-                    }
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                <label htmlFor="password" className="mb-1.5 block text-sm font-medium">
+                  Password
+                </label>
 
                 <div className="relative">
-                  <LockKeyhole
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20"
-                  />
-
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     id="password"
-                    type={
-                      showPassword
-                        ? "text"
-                        : "password"
-                    }
-                    value={password}
-                    onChange={(event) =>
-                      setPassword(event.target.value)
-                    }
-                    placeholder="Enter your password"
+                    type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
-                    className="h-12 w-full rounded-xl border border-white/[0.08] bg-white/[0.025] pl-10 pr-11 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/40 focus:bg-white/[0.04]"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.02] pl-10 pr-12 text-sm outline-none transition focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50"
+                    placeholder="••••••••"
+                    disabled={loading}
                   />
-
                   <button
                     type="button"
-                    onClick={() =>
-                      setShowPassword((current) => !current)
-                    }
-                    aria-label={
-                      showPassword
-                        ? "Hide password"
-                        : "Show password"
-                    }
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/25 transition hover:text-white/60"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
-                    {showPassword ? (
-                      <EyeOff size={15} />
-                    ) : (
-                      <Eye size={15} />
-                    )}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
-
-              {/* Remember me */}
-
-              <label className="flex cursor-pointer items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 rounded border-white/10 bg-white/[0.03] accent-violet-400"
-                />
-
-                <span className="text-[10px] text-white/30">
-                  Remember me
-                </span>
-              </label>
-
-              {/* Error */}
-
-              {error && (
-                <div className="rounded-xl border border-red-400/10 bg-red-400/[0.04] px-4 py-3 text-[10px] leading-4 text-red-300">
-                  {error}
-                </div>
-              )}
 
               {/* Submit */}
 
               <button
                 type="submit"
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:bg-white/90"
+                disabled={loading}
+                className="group w-full rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Sign in
-                <ArrowRight size={15} />
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg
+                      className="animate-spin h-5 w-5"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Signing in...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    Sign in
+                    <ArrowRight size={16} />
+                  </span>
+                )}
               </button>
             </form>
 
-            {/* Register */}
+            {/* Divider */}
 
-            <div className="mt-7 border-t border-white/[0.07] pt-6 text-center">
-              <p className="text-[10px] text-white/25">
-                Don&apos;t have an account?
-              </p>
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase tracking-wider text-white/20">
+                <span className="bg-[#0c101a]/95 px-2">Other options</span>
+              </div>
+            </div>
 
+            {/* Register links */}
+
+            <div className="grid grid-cols-2 gap-3">
               <Link
                 href="/register"
-                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-violet-300 transition hover:text-violet-200"
+                className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-center transition hover:border-white/20 hover:bg-white/[0.04]"
               >
-                Create an account
-                <ArrowRight size={12} />
+                Student
+              </Link>
+
+              <Link
+                href="/organizer/register"
+                className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-center transition hover:border-white/20 hover:bg-white/[0.04]"
+              >
+                Organizer
               </Link>
             </div>
+
+            <p className="mt-6 text-center text-xs text-white/30">
+              By continuing, you agree to our{" "}
+              <a href="#" className="underline hover:text-white">
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a href="#" className="underline hover:text-white">
+                Privacy Policy
+              </a>
+            </p>
           </div>
-
-          {/* Security note */}
-
-          <div className="mt-5 flex items-center justify-center gap-2 text-[9px] text-white/20">
-            <LockKeyhole size={11} />
-            Your account security is protected by Evently.
-          </div>
-
-          <p className="mt-4 text-center text-[9px] leading-4 text-white/15">
-            Student, organizer, and admin accounts use the same
-            secure sign-in system. Your account role is
-            determined by the platform.
-          </p>
         </div>
       </div>
     </main>

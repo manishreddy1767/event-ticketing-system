@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,601 +16,450 @@ import {
   Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
+import {
+  getEvent,
+  getEventTicketTypes,
+  getEventDiscount,
+  type ApiEvent,
+  type ApiTicketType,
+  type ApiDiscountResponse,
+} from "@/lib/api";
 
-const event = {
-  title: "AI Hackathon 2026",
-  category: "Technology",
-  date: "12 September 2026",
-  time: "10:00 AM – 8:00 PM",
-  location: "Main Auditorium",
-  organizer: "Vardhaman Tech Club",
-
-  description:
-    "A full-day technology challenge where students come together to build, experiment and solve meaningful problems using technology.",
-
-  registered: 382,
-  capacity: 500,
-
-  deadline: "10 September 2026",
-
-  ticketTypes: [
-    {
-      size: 1,
-      label: "Individual",
-      description: "Participate on your own",
-      price: 100,
-    },
-    {
-      size: 2,
-      label: "Team of 2",
-      description: "Bring one teammate",
-      price: 180,
-    },
-    {
-      size: 3,
-      label: "Team of 3",
-      description: "Build with two teammates",
-      price: 240,
-    },
-    {
-      size: 4,
-      label: "Team of 4",
-      description: "Build with three teammates",
-      price: 280,
-    },
-  ],
-
-  smartDiscount: 10,
+type Event = {
+  id: number;
+  title: string;
+  category: string;
+  date: string;
+  time: string;
+  location: string;
+  organizer: string;
+  description: string;
+  registered: number;
+  capacity: number;
+  deadline: string;
+  ticketTypes: {
+    id: number;
+    size: number;
+    label: string;
+    description: string;
+    price: number;
+    available_quantity: number;
+  }[];
+  smartDiscount: number;
 };
 
-export default function EventDetailsPage() {
+function formatDate(dateString: string): { date: string; time: string } {
+  const date = new Date(dateString);
+
+  return {
+    date: date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }),
+    time: date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
+  };
+}
+
+export default function EventDetailsPage({
+  params,
+}: {
+  params: Promise<{ eventId: string }>;
+}) {
+  const [event, setEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedTeam, setSelectedTeam] = useState(1);
 
-  const selectedTicket = event.ticketTypes.find(
+  useEffect(() => {
+    async function fetchEventData() {
+      try {
+        setLoading(true);
+
+        const eventId = (await params).eventId;
+        const numericEventId = parseInt(eventId, 10);
+
+        const [apiEvent, ticketTypes, discount] = await Promise.all([
+          getEvent(numericEventId),
+          getEventTicketTypes(numericEventId),
+          getEventDiscount(numericEventId),
+        ]);
+
+        const { date, time } = formatDate(apiEvent.event_date);
+
+        const transformedTicketTypes = ticketTypes.map((tt) => ({
+          id: tt.id,
+          size: tt.team_size,
+          label: tt.name,
+          description:
+            tt.team_size === 1
+              ? "Participate on your own"
+              : `Team of ${tt.team_size}`,
+          price: Number(tt.price),
+          available_quantity: tt.available_quantity,
+        }));
+
+        setEvent({
+          id: apiEvent.id,
+          title: apiEvent.title,
+          category: "Technology",
+          date,
+          time,
+          location: apiEvent.venue,
+          organizer: "Event Organizer",
+          description: apiEvent.description || "No description available",
+          registered: apiEvent.registered_count,
+          capacity: apiEvent.capacity,
+          deadline: date,
+          ticketTypes: transformedTicketTypes,
+          smartDiscount: Number(discount.predicted_discount),
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load event"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchEventData();
+  }, [params]);
+
+  const selectedTicket = event?.ticketTypes.find(
     (ticket) => ticket.size === selectedTeam
   );
 
   const basePrice = selectedTicket?.price ?? 0;
 
   const discount = Math.round(
-    (basePrice * event.smartDiscount) / 100
+    (basePrice * (event?.smartDiscount ?? 0)) / 100
   );
 
   const total = basePrice - discount;
 
-  const occupancy = Math.round(
-    (event.registered / event.capacity) * 100
-  );
+  const occupancy = event
+    ? Math.round((event.registered / event.capacity) * 100)
+    : 0;
+
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen overflow-hidden">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="animate-pulse space-y-8">
+            <div className="h-4 w-1/4 rounded bg-white/10" />
+
+            <div className="h-32 w-full rounded-2xl bg-white/5" />
+
+            <div className="grid gap-6 sm:grid-cols-2">
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !event) {
+    return (
+      <main className="campus-background min-h-screen overflow-hidden">
+        <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
+          <Sparkles className="mx-auto h-12 w-12 text-white/20" />
+
+          <h3 className="mt-4 text-lg font-medium">
+            Event not found
+          </h3>
+
+          <p className="mt-2 text-white/40">
+            {error || "This event doesn't exist or has been removed"}
+          </p>
+
+          <Link
+            href="/events"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90"
+          >
+            Back to events
+            <ArrowRight size={16} />
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="campus-background min-h-screen overflow-hidden">
-      {/* =========================
-          NAVBAR
-      ========================= */}
+    <main className="campus-background min-h-screen overflow-x-hidden">
+      {/* Background gradients */}
+      <div className="pointer-events-none absolute left-[8%] top-32 h-72 w-72 rounded-full bg-violet-600/10 blur-[120px]" />
 
-      <header className="fixed inset-x-0 top-0 z-50">
-        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-          <nav className="flex h-16 items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 backdrop-blur-xl sm:px-6">
-            <Link
-              href="/"
-              className="flex items-center gap-2.5"
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-black text-black">
-                E
-              </div>
+      <div className="pointer-events-none absolute right-[8%] top-40 h-80 w-80 rounded-full bg-cyan-500/10 blur-[130px]" />
 
-              <span className="text-lg font-bold tracking-tight">
-                Evently
-              </span>
-            </Link>
-
-            <div className="hidden items-center gap-8 md:flex">
-              <Link
-                href="/events"
-                className="text-sm font-medium text-white"
-              >
-                Events
-              </Link>
-
-              <Link
-                href="/events"
-                className="text-sm text-white/45 transition hover:text-white"
-              >
-                Discover
-              </Link>
-
-              <Link
-                href="/tickets"
-                className="text-sm text-white/45 transition hover:text-white"
-              >
-                My Tickets
-              </Link>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <Link
-                href="/login"
-                className="hidden text-sm text-white/60 transition hover:text-white sm:block"
-              >
-                Sign in
-              </Link>
-
-              <Link
-                href="/register"
-                className="hidden rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-white/90 sm:block"
-              >
-                Get Started
-              </Link>
-            </div>
-          </nav>
-        </div>
-      </header>
-
-      {/* =========================
-          BACK
-      ========================= */}
-
-      <div className="mx-auto max-w-7xl px-4 pt-32 sm:px-6 lg:px-8">
+      <div className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        {/* Back button */}
         <Link
           href="/events"
-          className="inline-flex items-center gap-2 text-sm text-white/40 transition hover:text-white"
+          className="mb-8 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm font-medium text-white/60 transition hover:border-white/20 hover:bg-white/[0.04] hover:text-white"
         >
           <ArrowLeft size={16} />
           Back to events
         </Link>
-      </div>
 
-      {/* =========================
-          HERO + REGISTRATION
-      ========================= */}
+        {/* Main layout */}
+        <div className="grid w-full min-w-0 gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          {/* Main content */}
+          <div className="min-w-0 space-y-6">
+            {/* Event header */}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-white/50">
+                <span className="rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-wider">
+                  {event.category}
+                </span>
 
-      <section className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr]">
-
-          {/* HERO */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="relative min-h-[500px] overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-violet-600/30 via-[#111625] to-cyan-400/10"
-          >
-            <div className="absolute -right-20 -top-20 h-96 w-96 rounded-full bg-violet-500/25 blur-[120px]" />
-
-            <div className="absolute -bottom-20 -left-10 h-80 w-80 rounded-full bg-cyan-400/10 blur-[110px]" />
-
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_25%,rgba(255,255,255,0.08),transparent_25%)]" />
-
-            <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:48px_48px]" />
-
-            <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-[#070a12] via-[#070a12]/80 to-transparent" />
-
-            <div className="absolute left-7 top-7 rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[10px] font-semibold tracking-[0.15em] text-white/65 backdrop-blur-xl">
-              {event.category.toUpperCase()}
-            </div>
-
-            <div className="absolute right-7 top-7 flex items-center gap-2 rounded-full border border-orange-300/10 bg-orange-400/10 px-3 py-2 text-[10px] font-medium text-orange-300 backdrop-blur-xl">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
-              High demand
-            </div>
-
-            <div className="absolute bottom-8 left-8 right-8">
-              <div className="flex items-center gap-2 text-xs text-violet-300">
-                <Sparkles size={14} />
-                Featured campus event
+                {event.smartDiscount > 0 && (
+                  <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-[10px] font-medium text-emerald-400">
+                    <Sparkles className="h-3 w-3" />
+                    Smart discount: {event.smartDiscount}%
+                  </span>
+                )}
               </div>
 
-              <h1 className="mt-3 max-w-2xl text-4xl font-semibold tracking-[-0.045em] sm:text-6xl">
+              <h1 className="mt-3 break-words text-3xl font-bold tracking-tight sm:text-4xl">
                 {event.title}
               </h1>
 
-              <p className="mt-4 max-w-xl text-sm leading-6 text-white/45">
+              <p className="mt-4 break-words text-lg text-white/60">
                 {event.description}
               </p>
+            </div>
 
-              <div className="mt-7 flex flex-wrap gap-3">
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/50 backdrop-blur">
-                  <CalendarDays size={14} />
-                  {event.date}
+            {/* Event details */}
+            <div className="min-w-0 rounded-2xl border border-white/10 bg-[#0c101a]/50 p-6">
+              <h2 className="text-lg font-semibold">
+                Event Details
+              </h2>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
+                    <CalendarDays className="h-5 w-5 text-violet-400" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40">
+                      Date
+                    </p>
+
+                    <p className="font-medium">
+                      {event.date}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/50 backdrop-blur">
-                  <MapPin size={14} />
-                  {event.location}
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
+                    <Clock3 className="h-5 w-5 text-cyan-400" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40">
+                      Time
+                    </p>
+
+                    <p className="font-medium">
+                      {event.time}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
+                    <MapPin className="h-5 w-5 text-emerald-400" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40">
+                      Venue
+                    </p>
+
+                    <p className="break-words font-medium">
+                      {event.location}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
+                    <ShieldCheck className="h-5 w-5 text-orange-400" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40">
+                      Registration Deadline
+                    </p>
+
+                    <p className="font-medium">
+                      {event.deadline}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Capacity bar */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between gap-4 text-sm">
+                  <span className="text-white/50">
+                    Capacity
+                  </span>
+
+                  <span className="text-right font-medium">
+                    {event.registered} / {event.capacity} registered
+                  </span>
+                </div>
+
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.05]">
+                  <div
+                    className="h-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-500"
+                    style={{ width: `${occupancy}%` }}
+                  />
                 </div>
               </div>
             </div>
-          </motion.div>
 
-          {/* REGISTRATION CARD */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="rounded-[2rem] border border-white/10 bg-[#0c101a]/90 p-6 sm:p-7"
-          >
-            {/* Price */}
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs text-white/30">
-                  Registration from
-                </p>
+            {/* Ticket types */}
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">
+                Choose Your Ticket
+              </h2>
 
-                <p className="mt-1 text-3xl font-semibold">
-                  ₹{event.ticketTypes[0].price}
-                </p>
-              </div>
+              <div className="mt-4 grid gap-4">
+                {event.ticketTypes.map((ticket) => (
+                  <button
+                    key={ticket.id}
+                    onClick={() => setSelectedTeam(ticket.size)}
+                    className={`relative flex min-w-0 w-full items-center gap-4 rounded-xl border p-4 text-left transition ${
+                      selectedTeam === ticket.size
+                        ? "border-violet-500/50 bg-violet-500/10"
+                        : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                    }`}
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
+                      <Users className="h-6 w-6 text-white/60" />
+                    </div>
 
-              <div className="rounded-xl border border-violet-300/10 bg-violet-400/10 px-3 py-2 text-right">
-                <p className="text-[9px] uppercase tracking-wider text-violet-200/50">
-                  Smart offer
-                </p>
-
-                <p className="mt-0.5 text-sm font-semibold text-violet-200">
-                  {event.smartDiscount}% OFF
-                </p>
-              </div>
-            </div>
-
-            <div className="my-6 border-t border-white/[0.07]" />
-
-            {/* Team selection */}
-            <div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold">
-                    Choose your registration
-                  </h2>
-
-                  <p className="mt-1 text-xs text-white/30">
-                    Select the team size you want to register.
-                  </p>
-                </div>
-
-                <Users
-                  size={18}
-                  className="text-white/25"
-                />
-              </div>
-
-              <div className="mt-5 space-y-2">
-                {event.ticketTypes.map((ticketType) => {
-                  const selected =
-                    selectedTeam === ticketType.size;
-
-                  return (
-                    <button
-                      key={ticketType.size}
-                      type="button"
-                      onClick={() =>
-                        setSelectedTeam(ticketType.size)
-                      }
-                      className={`flex w-full items-center justify-between rounded-xl border p-4 text-left transition ${
-                        selected
-                          ? "border-violet-400/40 bg-violet-400/[0.08]"
-                          : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-xl text-xs font-semibold ${
-                            selected
-                              ? "bg-violet-400 text-white"
-                              : "bg-white/[0.06] text-white/50"
-                          }`}
-                        >
-                          {ticketType.size}
-                        </div>
-
-                        <div>
-                          <p className="text-sm font-medium">
-                            {ticketType.label}
-                          </p>
-
-                          <p className="mt-0.5 text-[11px] text-white/30">
-                            {ticketType.description}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-white/65">
-                          ₹{ticketType.price}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">
+                          {ticket.label}
                         </span>
 
-                        {selected && (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-400">
-                            <Check size={12} />
-                          </div>
+                        {ticket.available_quantity < 10 &&
+                          ticket.available_quantity > 0 && (
+                            <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] font-medium text-orange-400">
+                              Only {ticket.available_quantity} left
+                            </span>
+                          )}
+
+                        {ticket.available_quantity === 0 && (
+                          <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-400">
+                            Sold out
+                          </span>
                         )}
                       </div>
-                    </button>
-                  );
-                })}
+
+                      <p className="mt-1 break-words text-sm text-white/50">
+                        {ticket.description}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <p className="text-lg font-bold">
+                        ₹{ticket.price}
+                      </p>
+
+                      <p className="text-sm text-white/40">
+                        per team
+                      </p>
+                    </div>
+
+                    {selectedTeam === ticket.size && (
+                      <div className="pointer-events-none absolute inset-0 rounded-xl border-2 border-violet-500/50" />
+                    )}
+                  </button>
+                ))}
               </div>
-            </div>
-
-            {/* PRICE SUMMARY */}
-            <div className="mt-6 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
-              <div className="flex justify-between text-xs text-white/40">
-                <span>
-                  {selectedTicket?.label}
-                </span>
-
-                <span>
-                  ₹{basePrice}
-                </span>
-              </div>
-
-              <div className="mt-2 flex justify-between text-xs text-emerald-300">
-                <span>
-                  Smart discount ({event.smartDiscount}%)
-                </span>
-
-                <span>
-                  -₹{discount}
-                </span>
-              </div>
-
-              <div className="my-3 border-t border-white/[0.06]" />
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  Total
-                </span>
-
-                <span className="text-xl font-semibold">
-                  ₹{total}
-                </span>
-              </div>
-            </div>
-
-            {/* CTA */}
-            <Link
-              href="/register"
-              className="group mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:bg-white/90"
-            >
-              Reserve your spot
-
-              <ArrowRight
-                size={16}
-                className="transition-transform group-hover:translate-x-1"
-              />
-            </Link>
-
-            <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-white/25">
-              <ShieldCheck size={13} />
-              Your spot is temporarily reserved during checkout.
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* =========================
-          EVENT INFORMATION
-      ========================= */}
-
-      <section className="border-y border-white/[0.06]">
-        <div className="mx-auto grid max-w-7xl gap-0 px-4 sm:px-6 lg:grid-cols-4 lg:px-8">
-          {[
-            {
-              icon: CalendarDays,
-              label: "Date",
-              value: event.date,
-            },
-            {
-              icon: Clock3,
-              label: "Time",
-              value: event.time,
-            },
-            {
-              icon: MapPin,
-              label: "Venue",
-              value: event.location,
-            },
-            {
-              icon: Users,
-              label: "Organizer",
-              value: event.organizer,
-            },
-          ].map((item, index) => (
-            <div
-              key={item.label}
-              className={`flex items-start gap-4 py-7 lg:px-6 ${
-                index !== 3
-                  ? "border-b border-white/[0.06] lg:border-b-0 lg:border-r"
-                  : ""
-              }`}
-            >
-              <item.icon
-                size={18}
-                className="mt-0.5 text-violet-300"
-              />
-
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-white/25">
-                  {item.label}
-                </p>
-
-                <p className="mt-1 text-sm font-medium text-white/70">
-                  {item.value}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* =========================
-          DEMAND + DEADLINE
-      ========================= */}
-
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[1fr_0.7fr]">
-
-          {/* DEMAND */}
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-7">
-            <div className="flex items-center gap-2 text-sm font-medium text-violet-300">
-              <Zap size={16} />
-              Live demand
-            </div>
-
-            <div className="mt-7 flex items-end justify-between">
-              <div>
-                <p className="text-4xl font-semibold tracking-tight">
-                  {occupancy}%
-                </p>
-
-                <p className="mt-1 text-xs text-white/30">
-                  of available capacity occupied
-                </p>
-              </div>
-
-              <p className="text-sm text-white/40">
-                {event.registered} / {event.capacity}
-              </p>
-            </div>
-
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/[0.07]">
-              <motion.div
-                initial={{ width: 0 }}
-                whileInView={{
-                  width: `${occupancy}%`,
-                }}
-                viewport={{ once: true }}
-                transition={{ duration: 1 }}
-                className="h-full rounded-full bg-gradient-to-r from-violet-400 to-cyan-300"
-              />
-            </div>
-
-            <div className="mt-5 flex items-center gap-2 text-xs text-orange-300">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
-
-              This event is receiving strong demand.
             </div>
           </div>
 
-          {/* DEADLINE */}
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-7">
-            <div className="flex items-center gap-2 text-sm font-medium text-white/70">
-              <Clock3
-                size={16}
-                className="text-violet-300"
-              />
-
-              Registration deadline
-            </div>
-
-            <p className="mt-6 text-2xl font-semibold">
-              {event.deadline}
-            </p>
-
-            <p className="mt-2 text-xs leading-5 text-white/30">
-              Registration automatically closes after the
-              organizer&apos;s deadline.
-            </p>
-
-            <div className="mt-6 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-4 py-3 text-xs text-white/40">
-              <ShieldCheck
-                size={15}
-                className="text-emerald-400"
-              />
-
-              Verified event by college administration
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =========================
-          AFTER REGISTRATION
-      ========================= */}
-
-      <section className="border-t border-white/[0.06] py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
-          <div className="max-w-xl">
-            <p className="text-sm font-medium text-violet-300">
-              After registration
-            </p>
-
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">
-              Everything stays in your Evently account.
-            </h2>
-
-            <p className="mt-4 text-sm leading-6 text-white/35">
-              Your registration, ticket, check-in status and
-              certificates remain connected to your account.
-            </p>
-          </div>
-
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-
-            {/* TICKET */}
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 transition hover:-translate-y-1 hover:bg-white/[0.035]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-                <Ticket size={20} />
-              </div>
-
-              <h3 className="mt-6 text-sm font-semibold">
-                Digital ticket
+          {/* Sidebar - Booking summary */}
+          <aside className="min-w-0 lg:min-w-[280px]">
+            <div className="sticky top-24 w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#0c101a]/50 p-6">
+              <h3 className="text-lg font-semibold">
+                Booking Summary
               </h3>
 
-              <p className="mt-2 text-xs leading-5 text-white/35">
-                Your unique digital ticket is generated after
-                registration confirmation.
-              </p>
-            </div>
+              <div className="mt-4 space-y-3">
+                <div className="flex min-w-0 items-center justify-between gap-4 text-sm">
+                  <span className="min-w-0 truncate text-white/50">
+                    {selectedTicket?.label}
+                  </span>
 
-            {/* QR */}
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 transition hover:-translate-y-1 hover:bg-white/[0.035]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-                <Zap size={20} />
+                  <span className="shrink-0 font-medium">
+                    ₹{basePrice}
+                  </span>
+                </div>
+
+                {event.smartDiscount > 0 && (
+                  <div className="flex min-w-0 items-center justify-between gap-4 text-sm text-emerald-400">
+                    <span className="min-w-0 truncate">
+                      Smart discount ({event.smartDiscount}%)
+                    </span>
+
+                    <span className="shrink-0 font-medium">
+                      -₹{discount}
+                    </span>
+                  </div>
+                )}
+
+                <div className="border-t border-white/10 pt-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-semibold">
+                      Total
+                    </span>
+
+                    <span className="shrink-0 text-xl font-bold">
+                      ₹{total}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <h3 className="mt-6 text-sm font-semibold">
-                Smart check-in
-              </h3>
+              {/* Reserve button */}
+              <Link
+                href={`/events/${event.id}/reserve?teamSize=${selectedTeam}`}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-center text-sm font-semibold text-black transition hover:bg-white/90"
+              >
+                <span className="truncate">
+                  Continue to Reserve
+                </span>
 
-              <p className="mt-2 text-xs leading-5 text-white/35">
-                Present your QR code at the entrance for quick
-                and reliable event verification.
+                <ArrowRight className="h-4 w-4 shrink-0" />
+              </Link>
+
+              <p className="mt-4 text-center text-xs text-white/40">
+                Secure checkout • QR ticket issued instantly
               </p>
             </div>
-
-            {/* CERTIFICATE */}
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 transition hover:-translate-y-1 hover:bg-white/[0.035]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-                <Sparkles size={20} />
-              </div>
-
-              <h3 className="mt-6 text-sm font-semibold">
-                Certificate
-              </h3>
-
-              <p className="mt-2 text-xs leading-5 text-white/35">
-                Participation and winner certificates can be
-                accessed directly from your account.
-              </p>
-            </div>
-          </div>
+          </aside>
         </div>
-      </section>
-
-      {/* =========================
-          FOOTER
-      ========================= */}
-
-      <footer className="border-t border-white/[0.06] py-10">
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 px-4 text-xs text-white/25 sm:flex-row sm:px-6 lg:px-8">
-          <span>
-            Evently — College Event Platform
-          </span>
-
-          <span>
-            Built for campus experiences.
-          </span>
-        </div>
-      </footer>
+      </div>
     </main>
   );
 }

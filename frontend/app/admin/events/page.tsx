@@ -1,198 +1,206 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
   Eye,
+  Loader2,
   Search,
   ShieldCheck,
   Ticket,
   Users,
   XCircle,
 } from "lucide-react";
+import { getPendingEvents, approveEvent, rejectEvent } from "@/lib/api";
 
-type EventStatus =
+type BackendEventStatus = "pending" | "approved" | "rejected";
+
+type AdminEvent = {
+  id: number;
+  title: string;
+  organizer_id: number;
+  venue: string;
+  event_date: string;
+  capacity: number;
+  max_discount_percent: number;
+  status: BackendEventStatus;
+  created_at: string;
+};
+
+type DisplayEventStatus =
   | "Pending Approval"
   | "Live"
   | "Upcoming"
   | "Completed"
-  | "Suspended"
-  | "Rejected";
+  | "Rejected"
+  | "Approved";
 
-type AdminEvent = {
-  id: string;
-  name: string;
-  organizer: string;
-  organizerId: string;
-  date: string;
-  registrations: number;
-  capacity: number;
-  status: EventStatus;
-};
+function mapBackendStatus(status: BackendEventStatus): DisplayEventStatus {
+  switch (status) {
+    case "pending":
+      return "Pending Approval";
+    case "approved":
+      return "Approved"; // Will be mapped to Live/Upcoming based on date
+    case "rejected":
+      return "Rejected";
+    default:
+      return "Pending Approval";
+  }
+}
 
-const initialEvents: AdminEvent[] = [
-  {
-    id: "EVT-AI26-001",
-    name: "AI Hackathon 2026",
-    organizer: "CSE Department",
-    organizerId: "ORG-0001",
-    date: "18 Oct 2026",
-    registrations: 248,
-    capacity: 300,
-    status: "Live",
-  },
-  {
-    id: "EVT-TS26-002",
-    name: "Tech Symposium 2026",
-    organizer: "IEEE Student Branch",
-    organizerId: "ORG-0002",
-    date: "25 Oct 2026",
-    registrations: 184,
-    capacity: 250,
-    status: "Upcoming",
-  },
-  {
-    id: "EVT-CS26-003",
-    name: "CodeSprint",
-    organizer: "Coding Club",
-    organizerId: "ORG-0003",
-    date: "02 Nov 2026",
-    registrations: 312,
-    capacity: 400,
-    status: "Upcoming",
-  },
-  {
-    id: "EVT-IN26-004",
-    name: "Innovation Expo",
-    organizer: "Innovation Cell",
-    organizerId: "ORG-0004",
-    date: "10 Sep 2026",
-    registrations: 96,
-    capacity: 150,
-    status: "Completed",
-  },
-  {
-    id: "EVT-RB26-005",
-    name: "Robotics Challenge",
-    organizer: "Robotics Club",
-    organizerId: "ORG-0005",
-    date: "15 Nov 2026",
-    registrations: 74,
-    capacity: 120,
-    status: "Suspended",
-  },
-  {
-    id: "EVT-HK26-006",
-    name: "Campus Hackathon",
-    organizer: "Coding Club",
-    organizerId: "ORG-0003",
-    date: "20 Nov 2026",
-    registrations: 0,
-    capacity: 250,
-    status: "Pending Approval",
-  },
-  {
-    id: "EVT-WK26-007",
-    name: "Web Development Workshop",
-    organizer: "Innovation Cell",
-    organizerId: "ORG-0004",
-    date: "28 Nov 2026",
-    registrations: 0,
-    capacity: 100,
-    status: "Rejected",
-  },
-];
+function getDisplayStatus(event: AdminEvent): DisplayEventStatus {
+  const baseStatus = mapBackendStatus(event.status);
+
+  if (baseStatus === "Approved") {
+    // Check if event date has passed
+    const eventDate = new Date(event.event_date);
+    const now = new Date();
+    return eventDate < now ? "Completed" : "Upcoming";
+  }
+
+  return baseStatus;
+}
 
 export default function AdminEventsPage() {
-  const [events, setEvents] =
-    useState<AdminEvent[]>(initialEvents);
-
+  const [events, setEvents] = useState<AdminEvent[]>([]);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"All" | DisplayEventStatus>("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
-  const [filter, setFilter] = useState<
-    "All" | EventStatus
-  >("All");
+  useEffect(() => {
+    async function fetchEvents() {
+      try {
+        setLoading(true);
+        const data = await getPendingEvents();
+        setEvents(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load events");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchEvents();
+  }, []);
+
+  const displayEvents = useMemo(() => {
+    return events.map((event) => ({
+      ...event,
+      displayStatus: getDisplayStatus(event),
+    }));
+  }, [events]);
 
   const filteredEvents = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return events.filter((event) => {
+    return displayEvents.filter((event) => {
       const matchesSearch =
         !query ||
-        event.name.toLowerCase().includes(query) ||
-        event.id.toLowerCase().includes(query) ||
-        event.organizer.toLowerCase().includes(query) ||
-        event.organizerId.toLowerCase().includes(query);
+        event.title.toLowerCase().includes(query) ||
+        event.id.toString().includes(query) ||
+        event.organizer_id.toString().includes(query);
 
       const matchesFilter =
-        filter === "All" ||
-        event.status === filter;
+        filter === "All" || event.displayStatus === filter;
 
       return matchesSearch && matchesFilter;
     });
-  }, [events, search, filter]);
+  }, [displayEvents, search, filter]);
 
-  const liveCount = events.filter(
-    (event) => event.status === "Live"
+  const pendingCount = displayEvents.filter(
+    (event) => event.displayStatus === "Pending Approval"
   ).length;
 
-  const upcomingCount = events.filter(
-    (event) => event.status === "Upcoming"
+  const upcomingCount = displayEvents.filter(
+    (event) => event.displayStatus === "Upcoming"
   ).length;
 
-  const completedCount = events.filter(
-    (event) => event.status === "Completed"
+  const completedCount = displayEvents.filter(
+    (event) => event.displayStatus === "Completed"
   ).length;
 
-  const pendingCount = events.filter(
-    (event) => event.status === "Pending Approval"
-  ).length;
+  const totalRegistrations = 0; // Would need separate endpoint for actual registrations
 
-  const totalRegistrations = events.reduce(
-    (total, event) => total + event.registrations,
-    0
-  );
-
-  function suspendEvent(id: string) {
-    setEvents((current) =>
-      current.map((event) =>
-        event.id === id
-          ? { ...event, status: "Suspended" }
-          : event
-      )
-    );
+  async function handleApproveEvent(id: number) {
+    setActionLoading(id);
+    try {
+      await approveEvent(id);
+      setEvents((current) =>
+        current.map((event) =>
+          event.id === id ? { ...event, status: "approved" as const } : event
+        )
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to approve event");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  function restoreEvent(id: string) {
-    setEvents((current) =>
-      current.map((event) =>
-        event.id === id
-          ? { ...event, status: "Upcoming" }
-          : event
-      )
-    );
+  async function handleRejectEvent(id: number) {
+    setActionLoading(id);
+    try {
+      await rejectEvent(id);
+      setEvents((current) =>
+        current.map((event) =>
+          event.id === id ? { ...event, status: "rejected" as const } : event
+        )
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to reject event");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  function approveEvent(id: string) {
-    setEvents((current) =>
-      current.map((event) =>
-        event.id === id
-          ? { ...event, status: "Upcoming" }
-          : event
-      )
-    );
-  }
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin/dashboard"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <ArrowLeft size={15} />
+              </Link>
 
-  function rejectEvent(id: string) {
-    setEvents((current) =>
-      current.map((event) =>
-        event.id === id
-          ? { ...event, status: "Rejected" }
-          : event
-      )
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-white/20">
+                  Admin
+                </p>
+
+                <h1 className="mt-1 text-sm font-semibold">
+                  Event management
+                </h1>
+              </div>
+            </div>
+
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
+              <ShieldCheck size={16} />
+            </div>
+          </div>
+        </header>
+
+        <section className="px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+          <div className="mx-auto max-w-7xl">
+            <div className="animate-pulse space-y-8">
+              <div className="h-4 w-1/4 rounded bg-white/10" />
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-32 rounded-2xl border border-white/10 bg-white/[0.02]" />
+                ))}
+              </div>
+              <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
+            </div>
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -241,8 +249,8 @@ export default function AdminEventsPage() {
             </h2>
 
             <p className="mt-3 max-w-2xl text-xs leading-5 text-white/35">
-              Oversee every event on Evently, regardless of
-              which organizer created it.
+              Oversee events on Evently. Pending events can be approved
+              or rejected before they become visible to students.
             </p>
           </div>
 
@@ -257,14 +265,14 @@ export default function AdminEventsPage() {
 
             <StatCard
               icon={<CheckCircle2 size={16} />}
-              label="Live events"
-              value={liveCount}
+              label="Upcoming events"
+              value={upcomingCount}
             />
 
             <StatCard
               icon={<CalendarDays size={16} />}
-              label="Upcoming"
-              value={upcomingCount}
+              label="Completed"
+              value={completedCount}
             />
 
             <StatCard
@@ -289,7 +297,7 @@ export default function AdminEventsPage() {
                   onChange={(event) =>
                     setSearch(event.target.value)
                   }
-                  placeholder="Search event, event ID, organizer or organizer ID..."
+                  placeholder="Search event, event ID, organizer ID..."
                   className="h-10 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] pl-9 pr-3 text-[10px] text-white outline-none placeholder:text-white/20 focus:border-violet-400/30"
                 />
               </div>
@@ -300,7 +308,7 @@ export default function AdminEventsPage() {
                   setFilter(
                     event.target.value as
                       | "All"
-                      | EventStatus
+                      | DisplayEventStatus
                   )
                 }
                 className="h-10 rounded-xl border border-white/[0.07] bg-[#0c101a] px-3 text-[10px] text-white/50 outline-none"
@@ -309,10 +317,8 @@ export default function AdminEventsPage() {
                 <option value="Pending Approval">
                   Pending Approval
                 </option>
-                <option value="Live">Live</option>
                 <option value="Upcoming">Upcoming</option>
                 <option value="Completed">Completed</option>
-                <option value="Suspended">Suspended</option>
                 <option value="Rejected">Rejected</option>
               </select>
             </div>
@@ -342,7 +348,7 @@ export default function AdminEventsPage() {
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                      Organizer
+                      Organizer ID
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
@@ -350,7 +356,11 @@ export default function AdminEventsPage() {
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                      Registrations
+                      Capacity
+                    </th>
+
+                    <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
+                      Max Discount
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
@@ -377,11 +387,11 @@ export default function AdminEventsPage() {
 
                           <div>
                             <p className="text-xs font-medium">
-                              {event.name}
+                              {event.title}
                             </p>
 
                             <p className="mt-1 font-mono text-[9px] text-white/20">
-                              {event.id}
+                              ID: {event.id}
                             </p>
                           </div>
                         </div>
@@ -389,41 +399,38 @@ export default function AdminEventsPage() {
 
                       <td className="px-5 py-4">
                         <p className="text-[10px] text-white/50">
-                          {event.organizer}
-                        </p>
-
-                        <p className="mt-1 font-mono text-[8px] text-white/20">
-                          {event.organizerId}
+                          {event.organizer_id}
                         </p>
                       </td>
 
                       <td className="px-5 py-4 text-[10px] text-white/40">
-                        {event.date}
+                        {new Date(event.event_date).toLocaleDateString()}
                       </td>
 
                       <td className="px-5 py-4">
-                        <p className="text-[10px] text-white/50">
-                          {event.registrations.toLocaleString()}
-                        </p>
+                        <span className="text-xs text-white/50">
+                          {event.capacity.toLocaleString()}
+                        </span>
+                      </td>
 
-                        <p className="mt-1 text-[8px] text-white/20">
-                          of {event.capacity.toLocaleString()}
-                        </p>
+                      <td className="px-5 py-4">
+                        <span className="text-xs text-white/50">
+                          {event.max_discount_percent}%
+                        </span>
                       </td>
 
                       <td className="px-5 py-4">
                         <EventStatusBadge
-                          status={event.status}
+                          status={event.displayStatus}
                         />
                       </td>
 
                       <td className="px-5 py-4">
                         <EventAction
                           event={event}
-                          onApprove={approveEvent}
-                          onReject={rejectEvent}
-                          onSuspend={suspendEvent}
-                          onRestore={restoreEvent}
+                          onApprove={handleApproveEvent}
+                          onReject={handleRejectEvent}
+                          loading={actionLoading === event.id}
                         />
                       </td>
                     </tr>
@@ -448,49 +455,48 @@ export default function AdminEventsPage() {
 
                       <div className="min-w-0">
                         <p className="truncate text-xs font-medium">
-                          {event.name}
+                          {event.title}
                         </p>
 
                         <p className="mt-1 font-mono text-[8px] text-white/20">
-                          {event.id}
+                          ID: {event.id}
                         </p>
                       </div>
                     </div>
 
                     <EventStatusBadge
-                      status={event.status}
+                      status={event.displayStatus}
                     />
                   </div>
 
                   <div className="mt-5 grid grid-cols-2 gap-3">
                     <InfoBox
-                      label="Organizer"
-                      value={event.organizer}
-                    />
-
-                    <InfoBox
                       label="Organizer ID"
-                      value={event.organizerId}
+                      value={event.organizer_id.toString()}
                     />
 
                     <InfoBox
                       label="Date"
-                      value={event.date}
+                      value={new Date(event.event_date).toLocaleDateString()}
                     />
 
                     <InfoBox
-                      label="Registrations"
-                      value={`${event.registrations} / ${event.capacity}`}
+                      label="Capacity"
+                      value={event.capacity.toLocaleString()}
+                    />
+
+                    <InfoBox
+                      label="Max Discount"
+                      value={`${event.max_discount_percent}%`}
                     />
                   </div>
 
                   <div className="mt-4">
                     <EventAction
                       event={event}
-                      onApprove={approveEvent}
-                      onReject={rejectEvent}
-                      onSuspend={suspendEvent}
-                      onRestore={restoreEvent}
+                      onApprove={handleApproveEvent}
+                      onReject={handleRejectEvent}
+                      loading={actionLoading === event.id}
                     />
                   </div>
                 </div>
@@ -530,12 +536,9 @@ export default function AdminEventsPage() {
                 </p>
 
                 <p className="mt-1 text-[10px] leading-5 text-white/25">
-                  Admins can oversee events created by any
-                  organizer. Pending events can be approved or
-                  rejected before they become visible to students.
-                  All approval, suspension, and restoration actions
-                  are currently frontend-only and will be enforced
-                  by the backend later.
+                  Admins can approve or reject pending events. Approved
+                  events become visible to students for registration.
+                  Rejected events cannot be resubmitted.
                 </p>
               </div>
             </div>
@@ -575,16 +578,12 @@ function StatCard({
 function EventStatusBadge({
   status,
 }: {
-  status: EventStatus;
+  status: DisplayEventStatus;
 }) {
-  const config = {
+  const config: Record<DisplayEventStatus, { className: string; icon: React.ReactNode }> = {
     "Pending Approval": {
       className: "bg-amber-400/10 text-amber-300",
       icon: <ShieldCheck size={10} />,
-    },
-    Live: {
-      className: "bg-emerald-400/10 text-emerald-300",
-      icon: <CheckCircle2 size={10} />,
     },
     Upcoming: {
       className: "bg-violet-400/10 text-violet-300",
@@ -594,13 +593,17 @@ function EventStatusBadge({
       className: "bg-white/[0.05] text-white/30",
       icon: <CheckCircle2 size={10} />,
     },
-    Suspended: {
-      className: "bg-red-400/10 text-red-300",
-      icon: <XCircle size={10} />,
-    },
     Rejected: {
       className: "bg-red-400/[0.06] text-red-300",
       icon: <XCircle size={10} />,
+    },
+    Live: {
+      className: "bg-emerald-400/10 text-emerald-300",
+      icon: <CheckCircle2 size={10} />,
+    },
+    Approved: {
+      className: "bg-violet-400/10 text-violet-300",
+      icon: <CalendarDays size={10} />,
     },
   };
 
@@ -620,23 +623,21 @@ function EventAction({
   event,
   onApprove,
   onReject,
-  onSuspend,
-  onRestore,
+  loading,
 }: {
-  event: AdminEvent;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onSuspend: (id: string) => void;
-  onRestore: (id: string) => void;
+  event: AdminEvent & { displayStatus: DisplayEventStatus };
+  onApprove: (id: number) => void;
+  onReject: (id: number) => void;
+  loading: boolean;
 }) {
-  if (event.status === "Pending Approval") {
+  if (event.displayStatus === "Pending Approval") {
     return (
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() =>
             alert(
-              `Event details for ${event.name} will be connected to the backend later.`
+              `Event details for ${event.title} will be connected to the backend later.`
             )
           }
           className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
@@ -648,7 +649,8 @@ function EventAction({
         <button
           type="button"
           onClick={() => onApprove(event.id)}
-          className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[9px] font-semibold text-black transition hover:bg-white/90"
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[9px] font-semibold text-black transition hover:bg-white/90 disabled:opacity-50"
         >
           <CheckCircle2 size={11} />
           Approve
@@ -657,7 +659,8 @@ function EventAction({
         <button
           type="button"
           onClick={() => onReject(event.id)}
-          className="flex items-center gap-1.5 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-3 py-2 text-[9px] text-red-300 transition hover:bg-red-400/[0.08]"
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-3 py-2 text-[9px] text-red-300 transition hover:bg-red-400/[0.08] disabled:opacity-50"
         >
           <XCircle size={11} />
           Reject
@@ -666,14 +669,14 @@ function EventAction({
     );
   }
 
-  if (event.status === "Rejected") {
+  if (event.displayStatus === "Rejected") {
     return (
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() =>
             alert(
-              `Event details for ${event.name} will be connected to the backend later.`
+              `Event details for ${event.title} will be connected to the backend later.`
             )
           }
           className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
@@ -689,28 +692,13 @@ function EventAction({
     );
   }
 
-  if (event.status === "Suspended") {
-    return (
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onRestore(event.id)}
-          className="flex items-center gap-1.5 rounded-lg border border-emerald-400/10 bg-emerald-400/[0.04] px-3 py-2 text-[9px] text-emerald-300 transition hover:bg-emerald-400/[0.08]"
-        >
-          <CheckCircle2 size={11} />
-          Restore
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={() =>
           alert(
-            `Event details for ${event.name} will be connected to the backend later.`
+            `Event details for ${event.title} will be connected to the backend later.`
           )
         }
         className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
@@ -719,14 +707,9 @@ function EventAction({
         View
       </button>
 
-      <button
-        type="button"
-        onClick={() => onSuspend(event.id)}
-        className="flex items-center gap-1.5 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-3 py-2 text-[9px] text-red-300 transition hover:bg-red-400/[0.08]"
-      >
-        <XCircle size={11} />
-        Suspend
-      </button>
+      <span className="text-[9px] text-white/20">
+        {event.displayStatus}
+      </span>
     </div>
   );
 }

@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, require_role
 from app.models.event import Event
+from app.models.ticket import Ticket
+from app.models.ticket_type import TicketType
 from app.models.user import User
 from app.schemas.event import (
     EventCreateRequest,
@@ -15,6 +18,58 @@ router = APIRouter(
     prefix="/events",
     tags=["Events"],
 )
+
+
+def get_registered_count(
+    db: Session,
+    event_id: int,
+) -> int:
+    result = (
+        db.query(
+            func.coalesce(
+                func.sum(
+                    Ticket.quantity * TicketType.team_size
+                ),
+                0,
+            )
+        )
+        .join(
+            TicketType,
+            Ticket.ticket_type_id == TicketType.id,
+        )
+        .filter(
+            TicketType.event_id == event_id,
+            Ticket.status.in_(["reserved", "paid"]),
+        )
+        .scalar()
+    )
+
+    return int(result or 0)
+
+
+def event_with_registered_count(
+    db: Session,
+    event: Event,
+):
+    data = {
+        "id": event.id,
+        "organizer_id": event.organizer_id,
+        "title": event.title,
+        "description": event.description,
+        "venue": event.venue,
+        "event_date": event.event_date,
+        "capacity": event.capacity,
+        "registered_count": get_registered_count(
+            db,
+            event.id,
+        ),
+        "max_discount_percent": event.max_discount_percent,
+        "status": event.status,
+        "certificate_template_path": event.certificate_template_path,
+        "created_at": event.created_at,
+    }
+
+    return data
 
 
 @router.post(
@@ -42,7 +97,7 @@ def create_event(
     db.commit()
     db.refresh(event)
 
-    return event
+    return event_with_registered_count(db, event)
 
 
 @router.get(
@@ -52,12 +107,17 @@ def create_event(
 def get_events(
     db: Session = Depends(get_db),
 ):
-    return (
+    events = (
         db.query(Event)
         .filter(Event.status == "approved")
         .order_by(Event.event_date.asc())
         .all()
     )
+
+    return [
+        event_with_registered_count(db, event)
+        for event in events
+    ]
 
 
 @router.get(
@@ -68,12 +128,17 @@ def get_my_events(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("organizer")),
 ):
-    return (
+    events = (
         db.query(Event)
         .filter(Event.organizer_id == current_user.id)
         .order_by(Event.created_at.desc())
         .all()
     )
+
+    return [
+        event_with_registered_count(db, event)
+        for event in events
+    ]
 
 
 @router.get(
@@ -135,4 +200,4 @@ def get_event(
             detail="Event not found",
         )
 
-    return event
+    return event_with_registered_count(db, event)

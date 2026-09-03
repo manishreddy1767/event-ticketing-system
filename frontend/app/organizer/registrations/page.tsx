@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -15,187 +15,106 @@ import {
   Ticket,
   UserRound,
   Filter,
+  Loader2,
 } from "lucide-react";
+import { getOrganizerRegistrations, getEvent, type ApiRegistration, type ApiEvent } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type RegistrationStatus = "Paid" | "Pending" | "Cancelled";
 
-type Participant = {
-  id: number;
-  name: string;
-  rollNumber: string;
-  email: string;
-  college: string;
-  team: string | null;
-  teamSize: number;
-  status: RegistrationStatus;
-  ticketId: string;
+interface RegistrationWithAttendance extends ApiRegistration {
   attendance: "Present" | "Not checked in";
-};
+}
 
-const participants: Participant[] = [
-  {
-    id: 1,
-    name: "Manish Reddy",
-    rollNumber: "23CSE042",
-    email: "manish@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Team Alpha",
-    teamSize: 3,
-    status: "Paid",
-    ticketId: "EVT-AI26-7F31",
-    attendance: "Present",
-  },
-  {
-    id: 2,
-    name: "Rahul Kumar",
-    rollNumber: "23CSE046",
-    email: "rahul@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Team Alpha",
-    teamSize: 3,
-    status: "Paid",
-    ticketId: "EVT-AI26-8A21",
-    attendance: "Present",
-  },
-  {
-    id: 3,
-    name: "Arjun Sharma",
-    rollNumber: "23CSE058",
-    email: "arjun@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Team Alpha",
-    teamSize: 3,
-    status: "Paid",
-    ticketId: "EVT-AI26-9B12",
-    attendance: "Not checked in",
-  },
-  {
-    id: 4,
-    name: "Priya Sharma",
-    rollNumber: "23CSE061",
-    email: "priya@example.com",
-    college: "Vardhaman College of Engineering",
-    team: null,
-    teamSize: 1,
-    status: "Paid",
-    ticketId: "EVT-AI26-4D82",
-    attendance: "Present",
-  },
-  {
-    id: 5,
-    name: "Sneha Patel",
-    rollNumber: "23CSE072",
-    email: "sneha@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Code Queens",
-    teamSize: 2,
-    status: "Paid",
-    ticketId: "EVT-AI26-5E92",
-    attendance: "Not checked in",
-  },
-  {
-    id: 6,
-    name: "Ananya Reddy",
-    rollNumber: "23CSE080",
-    email: "ananya@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Code Queens",
-    teamSize: 2,
-    status: "Pending",
-    ticketId: "EVT-AI26-6F11",
-    attendance: "Not checked in",
-  },
-  {
-    id: 7,
-    name: "Karthik Rao",
-    rollNumber: "23CSE091",
-    email: "karthik@example.com",
-    college: "Vardhaman College of Engineering",
-    team: null,
-    teamSize: 1,
-    status: "Paid",
-    ticketId: "EVT-AI26-2A41",
-    attendance: "Not checked in",
-  },
-  {
-    id: 8,
-    name: "Sandeep Rao",
-    rollNumber: "23CSE104",
-    email: "sandeep@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Innovation Squad",
-    teamSize: 4,
-    status: "Paid",
-    ticketId: "EVT-AI26-3C51",
-    attendance: "Present",
-  },
-  {
-    id: 9,
-    name: "Vikram Singh",
-    rollNumber: "23CSE109",
-    email: "vikram@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Innovation Squad",
-    teamSize: 4,
-    status: "Paid",
-    ticketId: "EVT-AI26-4C61",
-    attendance: "Present",
-  },
-  {
-    id: 10,
-    name: "Aditi Rao",
-    rollNumber: "23CSE115",
-    email: "aditi@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Innovation Squad",
-    teamSize: 4,
-    status: "Paid",
-    ticketId: "EVT-AI26-5C71",
-    attendance: "Not checked in",
-  },
-  {
-    id: 11,
-    name: "Rohan Mehta",
-    rollNumber: "23CSE121",
-    email: "rohan@example.com",
-    college: "Vardhaman College of Engineering",
-    team: "Innovation Squad",
-    teamSize: 4,
-    status: "Paid",
-    ticketId: "EVT-AI26-6C81",
-    attendance: "Not checked in",
-  },
-];
+function normalizeStatus(status: string): RegistrationStatus {
+  const normalized = status.toLowerCase();
+  if (normalized === "paid") return "Paid";
+  if (normalized === "pending" || normalized === "reserved") return "Pending";
+  if (normalized === "cancelled" || normalized === "refunded") return "Cancelled";
+  return "Pending";
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
 
 export default function OrganizerRegistrationsPage() {
+  const { user } = useAuth();
+  const [registrations, setRegistrations] = useState<RegistrationWithAttendance[]>([]);
+  const [event, setEvent] = useState<ApiEvent | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<"All" | RegistrationStatus>("All");
-  const [attendanceFilter, setAttendanceFilter] =
-    useState<"All" | "Present" | "Not checked in">("All");
-  const [expandedTeams, setExpandedTeams] = useState<string[]>([
-    "Team Alpha",
-  ]);
+  const [statusFilter, setStatusFilter] = useState<"All" | RegistrationStatus>("All");
+  const [attendanceFilter, setAttendanceFilter] = useState<"All" | "Present" | "Not checked in">("All");
+  const [expandedTeams, setExpandedTeams] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredParticipants = useMemo(() => {
+  // Get event ID from URL - in a real app this would come from route params
+  // For now we'll use the first event from getMyEvents or a specific event
+  useEffect(() => {
+    async function fetchRegistrations() {
+      if (!user || user.role !== "organizer") return;
+
+      try {
+        setLoading(true);
+
+        // First get the organizer's events to find the event ID
+        const events = await getEvent(user.id);
+        // Actually, we need to get events first. Let's fetch the first event for now
+        // In a real implementation, this would come from route params
+        // For demo purposes, let's get all organizer events and use the first one
+        // We need to import getMyEvents
+        const { getMyEvents } = await import("@/lib/api");
+        const myEvents = await getMyEvents();
+
+        if (myEvents.length > 0) {
+          const firstEvent = myEvents[0];
+          setEvent(firstEvent);
+
+          const regs = await getOrganizerRegistrations(firstEvent.id);
+
+          // Transform registrations to include attendance status
+          const registrationsWithAttendance: RegistrationWithAttendance[] = regs.map((reg) => ({
+            ...reg,
+            attendance: "Not checked in" as "Present" | "Not checked in", // TODO: fetch actual attendance
+          }));
+
+          setRegistrations(registrationsWithAttendance);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load registrations");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchRegistrations();
+  }, [user]);
+
+  const filteredRegistrations = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return participants.filter((participant) => {
+    return registrations.filter((registration) => {
       const matchesSearch =
         !query ||
-        participant.name.toLowerCase().includes(query) ||
-        participant.rollNumber.toLowerCase().includes(query) ||
-        participant.email.toLowerCase().includes(query) ||
-        participant.ticketId.toLowerCase().includes(query) ||
-        participant.team?.toLowerCase().includes(query);
+        registration.user?.name?.toLowerCase().includes(query) ||
+        registration.user?.email?.toLowerCase().includes(query) ||
+        registration.qr_token.toLowerCase().includes(query) ||
+        registration.ticket_type?.toLowerCase().includes(query);
 
+      const normalizedStatus = normalizeStatus(registration.status);
       const matchesStatus =
         statusFilter === "All" ||
-        participant.status === statusFilter;
+        normalizedStatus === statusFilter;
 
       const matchesAttendance =
         attendanceFilter === "All" ||
-        participant.attendance === attendanceFilter;
+        registration.attendance === attendanceFilter;
 
       return (
         matchesSearch &&
@@ -203,26 +122,33 @@ export default function OrganizerRegistrationsPage() {
         matchesAttendance
       );
     });
-  }, [search, statusFilter, attendanceFilter]);
+  }, [registrations, search, statusFilter, attendanceFilter]);
 
-  const totalParticipants = participants.length;
-  const paidParticipants = participants.filter(
-    (participant) => participant.status === "Paid"
+  const totalParticipants = registrations.length;
+  const paidParticipants = registrations.filter(
+    (registration) => normalizeStatus(registration.status) === "Paid"
   ).length;
-  const presentParticipants = participants.filter(
-    (participant) => participant.attendance === "Present"
+  const presentParticipants = registrations.filter(
+    (registration) => registration.attendance === "Present"
   ).length;
-  const teamParticipants = participants.filter(
-    (participant) => participant.team
+  const teamParticipants = registrations.filter(
+    (registration) => registration.team_id
   ).length;
 
   const teams = Array.from(
     new Set(
-      filteredParticipants
-        .map((participant) => participant.team)
-        .filter(Boolean) as string[]
+      filteredRegistrations
+        .map((registration) => registration.team_id)
+        .filter(Boolean) as number[]
     )
-  );
+  ).map((teamId) => {
+    const teamRegs = filteredRegistrations.filter((r) => r.team_id === teamId);
+    return {
+      id: teamId,
+      name: `Team ${teamId}`,
+      members: teamRegs,
+    };
+  });
 
   function toggleTeam(teamName: string) {
     setExpandedTeams((current) =>
@@ -238,10 +164,49 @@ export default function OrganizerRegistrationsPage() {
     );
   }
 
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/organizer/events"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <ArrowLeft size={15} />
+              </Link>
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-white/20">
+                  Organizer
+                </p>
+                <h1 className="mt-1 text-sm font-semibold">
+                  Registrations
+                </h1>
+              </div>
+            </div>
+          </div>
+        </header>
+        <section className="px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+          <div className="mx-auto max-w-7xl">
+            <div className="animate-pulse space-y-8">
+              <div className="h-4 w-1/4 rounded bg-white/10" />
+              <div className="h-32 w-full rounded-2xl bg-white/5" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="campus-background min-h-screen">
       {/* Header */}
-
       <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
@@ -251,12 +216,10 @@ export default function OrganizerRegistrationsPage() {
             >
               <ArrowLeft size={15} />
             </Link>
-
             <div>
               <p className="text-[9px] uppercase tracking-wider text-white/20">
                 Organizer
               </p>
-
               <h1 className="mt-1 text-sm font-semibold">
                 Registrations
               </h1>
@@ -275,17 +238,14 @@ export default function OrganizerRegistrationsPage() {
       <section className="px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
         <div className="mx-auto max-w-7xl">
           {/* Intro */}
-
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-medium text-violet-300">
                 Participant management
               </p>
-
               <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
                 Registrations.
               </h2>
-
               <p className="mt-3 max-w-2xl text-xs leading-5 text-white/35">
                 View registered students, teams, tickets, payment
                 status, and attendance for your event.
@@ -303,50 +263,44 @@ export default function OrganizerRegistrationsPage() {
           </div>
 
           {/* Event */}
-
-          <div className="mt-8 rounded-2xl border border-violet-400/10 bg-violet-400/[0.035] p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-[9px] uppercase tracking-wider text-violet-300/60">
-                  Selected event
-                </p>
-
-                <h3 className="mt-1 text-base font-semibold">
-                  AI Hackathon 2026
-                </h3>
-
-                <p className="mt-1 text-[10px] text-white/25">
-                  18 October 2026 • Vardhaman College of Engineering
-                </p>
+          {event && (
+            <div className="mt-8 rounded-2xl border border-violet-400/10 bg-violet-400/[0.035] p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-violet-300/60">
+                    Selected event
+                  </p>
+                  <h3 className="mt-1 text-base font-semibold">
+                    {event.title}
+                  </h3>
+                  <p className="mt-1 text-[10px] text-white/25">
+                    {new Date(event.event_date).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })} • {event.venue}
+                  </p>
+                </div>
+                <span className="w-fit rounded-full bg-emerald-400/10 px-3 py-1.5 text-[10px] text-emerald-300">
+                  {event.status === "approved" ? "Registration open" : event.status}
+                </span>
               </div>
-
-              <span className="w-fit rounded-full bg-emerald-400/10 px-3 py-1.5 text-[10px] text-emerald-300">
-                Registration open
-              </span>
             </div>
-          </div>
+          )}
 
           {/* Stats */}
-
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={<Users size={16} />}
               label="Total participants"
               value={totalParticipants}
             />
-
             <StatCard
               icon={<Ticket size={16} />}
               label="Paid registrations"
               value={paidParticipants}
             />
-
             <StatCard
               icon={<CheckCircle2 size={16} />}
               label="Checked in"
               value={presentParticipants}
             />
-
             <StatCard
               icon={<Users size={16} />}
               label="Team participants"
@@ -355,7 +309,6 @@ export default function OrganizerRegistrationsPage() {
           </div>
 
           {/* Filters */}
-
           <div className="mt-6 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
             <div className="flex flex-col gap-3 lg:flex-row">
               <div className="relative flex-1">
@@ -363,20 +316,18 @@ export default function OrganizerRegistrationsPage() {
                   size={14}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20"
                 />
-
                 <input
                   value={search}
                   onChange={(event) =>
                     setSearch(event.target.value)
                   }
-                  placeholder="Search name, roll number, team, email or ticket..."
+                  placeholder="Search name, email, team, email or ticket..."
                   className="h-10 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] pl-9 pr-3 text-[10px] text-white outline-none placeholder:text-white/20 focus:border-violet-400/30"
                 />
               </div>
 
               <div className="flex items-center gap-2">
                 <Filter size={14} className="text-white/20" />
-
                 <select
                   value={statusFilter}
                   onChange={(event) =>
@@ -417,7 +368,6 @@ export default function OrganizerRegistrationsPage() {
           </div>
 
           {/* Participant table */}
-
           <div className="mt-6 overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02]">
             <div className="border-b border-white/[0.06] px-5 py-4">
               <div className="flex items-center justify-between">
@@ -425,13 +375,11 @@ export default function OrganizerRegistrationsPage() {
                   <p className="text-[9px] uppercase tracking-wider text-white/20">
                     Participants
                   </p>
-
                   <p className="mt-1 text-xs text-white/40">
-                    Showing {filteredParticipants.length} of{" "}
+                    Showing {filteredRegistrations.length} of{" "}
                     {totalParticipants} registrations
                   </p>
                 </div>
-
                 <UserRound
                   size={16}
                   className="text-white/20"
@@ -440,7 +388,6 @@ export default function OrganizerRegistrationsPage() {
             </div>
 
             {/* Desktop table */}
-
             <div className="hidden overflow-x-auto lg:block">
               <table className="w-full">
                 <thead>
@@ -448,58 +395,48 @@ export default function OrganizerRegistrationsPage() {
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
                       Participant
                     </th>
-
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                      Roll number
+                      Email
                     </th>
-
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
                       Team
                     </th>
-
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                      Ticket
+                      Ticket Type
                     </th>
-
+                    <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
+                      QR Token
+                    </th>
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
                       Payment
                     </th>
-
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
                       Attendance
                     </th>
                   </tr>
                 </thead>
-
                 <tbody>
-                  {filteredParticipants
+                  {filteredRegistrations
                     .filter(
-                      (participant) => !participant.team
+                      (registration) => !registration.team_id
                     )
-                    .map((participant) => (
+                    .map((registration) => (
                       <ParticipantRow
-                        key={participant.id}
-                        participant={participant}
+                        key={registration.id}
+                        registration={registration}
                       />
                     ))}
 
-                  {teams.map((teamName) => {
-                    const members = filteredParticipants.filter(
-                      (participant) =>
-                        participant.team === teamName
-                    );
-
-                    const expanded =
-                      expandedTeams.includes(teamName);
-
+                  {teams.map((team) => {
+                    const expanded = expandedTeams.includes(team.name);
                     return (
                       <TeamGroup
-                        key={teamName}
-                        teamName={teamName}
-                        members={members}
+                        key={team.id}
+                        teamName={team.name}
+                        members={team.members}
                         expanded={expanded}
                         onToggle={() =>
-                          toggleTeam(teamName)
+                          toggleTeam(team.name)
                         }
                       />
                     );
@@ -509,21 +446,20 @@ export default function OrganizerRegistrationsPage() {
             </div>
 
             {/* Mobile cards */}
-
             <div className="divide-y divide-white/[0.06] lg:hidden">
-              {filteredParticipants.length === 0 ? (
+              {filteredRegistrations.length === 0 ? (
                 <EmptyState />
               ) : (
-                filteredParticipants.map((participant) => (
+                filteredRegistrations.map((registration) => (
                   <MobileParticipantCard
-                    key={participant.id}
-                    participant={participant}
+                    key={registration.id}
+                    registration={registration}
                   />
                 ))
               )}
             </div>
 
-            {filteredParticipants.length === 0 && (
+            {filteredRegistrations.length === 0 && (
               <div className="hidden lg:block">
                 <EmptyState />
               </div>
@@ -531,19 +467,16 @@ export default function OrganizerRegistrationsPage() {
           </div>
 
           {/* Team note */}
-
           <div className="mt-6 rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.025] p-5">
             <div className="flex items-start gap-3">
               <Users
                 size={17}
                 className="mt-0.5 shrink-0 text-cyan-300"
               />
-
               <div>
                 <p className="text-xs font-medium">
                   Team registrations are tracked individually
                 </p>
-
                 <p className="mt-1 text-[10px] leading-5 text-white/25">
                   Each team member has their own ticket and QR
                   code. When attendance is recorded, only the
@@ -574,11 +507,9 @@ function StatCard({
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-white/40">
         {icon}
       </div>
-
       <p className="mt-4 text-[9px] uppercase tracking-wider text-white/20">
         {label}
       </p>
-
       <p className="mt-1 text-2xl font-semibold tracking-tight">
         {value}
       </p>
@@ -587,51 +518,47 @@ function StatCard({
 }
 
 function ParticipantRow({
-  participant,
+  registration,
 }: {
-  participant: Participant;
+  registration: RegistrationWithAttendance;
 }) {
   return (
     <tr className="border-b border-white/[0.05] transition hover:bg-white/[0.015]">
       <td className="px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-400/10 text-[10px] font-semibold text-violet-300">
-            {getInitials(participant.name)}
+            {getInitials(registration.user?.name || "Unknown")}
           </div>
-
           <div>
             <p className="text-xs font-medium text-white/75">
-              {participant.name}
+              {registration.user?.name || "Unknown"}
             </p>
-
             <p className="mt-0.5 text-[9px] text-white/20">
-              {participant.email}
+              {registration.user?.email || ""}
             </p>
           </div>
         </div>
       </td>
-
       <td className="px-5 py-4 font-mono text-[10px] text-white/40">
-        {participant.rollNumber}
+        {registration.user?.email || "N/A"}
       </td>
-
       <td className="px-5 py-4">
         <span className="text-[10px] text-white/40">
-          Individual
+          {registration.team_id ? `Team ${registration.team_id}` : "Individual"}
         </span>
       </td>
-
       <td className="px-5 py-4 font-mono text-[9px] text-white/30">
-        {participant.ticketId}
+        {registration.ticket_type}
       </td>
-
+      <td className="px-5 py-4 font-mono text-[9px] text-white/30">
+        {registration.qr_token.slice(0, 12)}...
+      </td>
       <td className="px-5 py-4">
-        <StatusBadge status={participant.status} />
+        <StatusBadge status={normalizeStatus(registration.status)} />
       </td>
-
       <td className="px-5 py-4">
         <AttendanceBadge
-          attendance={participant.attendance}
+          attendance={registration.attendance}
         />
       </td>
     </tr>
@@ -645,14 +572,14 @@ function TeamGroup({
   onToggle,
 }: {
   teamName: string;
-  members: Participant[];
+  members: RegistrationWithAttendance[];
   expanded: boolean;
   onToggle: () => void;
 }) {
   return (
     <>
       <tr className="border-b border-white/[0.05] bg-white/[0.015]">
-        <td colSpan={6} className="px-5 py-3">
+        <td colSpan={7} className="px-5 py-3">
           <button
             type="button"
             onClick={onToggle}
@@ -669,37 +596,32 @@ function TeamGroup({
                 className="text-white/30"
               />
             )}
-
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-400/10">
               <Users
                 size={13}
                 className="text-violet-300"
               />
             </div>
-
             <div>
               <p className="text-xs font-semibold">
                 {teamName}
               </p>
-
               <p className="mt-0.5 text-[9px] text-white/20">
                 {members.length} participant
                 {members.length === 1 ? "" : "s"}
               </p>
             </div>
-
             <span className="ml-auto text-[9px] text-white/20">
               Team registration
             </span>
           </button>
         </td>
       </tr>
-
       {expanded &&
-        members.map((participant) => (
+        members.map((registration) => (
           <ParticipantRow
-            key={participant.id}
-            participant={participant}
+            key={registration.id}
+            registration={registration}
           />
         ))}
     </>
@@ -707,63 +629,54 @@ function TeamGroup({
 }
 
 function MobileParticipantCard({
-  participant,
+  registration,
 }: {
-  participant: Participant;
+  registration: RegistrationWithAttendance;
 }) {
   return (
     <div className="p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/10 text-[10px] font-semibold text-violet-300">
-            {getInitials(participant.name)}
+            {getInitials(registration.user?.name || "Unknown")}
           </div>
-
           <div>
             <p className="text-xs font-medium">
-              {participant.name}
+              {registration.user?.name || "Unknown"}
             </p>
-
             <p className="mt-1 font-mono text-[9px] text-white/25">
-              {participant.rollNumber}
+              {registration.user?.email || "N/A"}
             </p>
           </div>
         </div>
-
-        <StatusBadge status={participant.status} />
+        <StatusBadge status={normalizeStatus(registration.status)} />
       </div>
-
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
           <p className="text-[9px] uppercase tracking-wider text-white/15">
             Team
           </p>
-
           <p className="mt-1 text-[10px] text-white/45">
-            {participant.team ?? "Individual"}
+            {registration.team_id ? `Team ${registration.team_id}` : "Individual"}
           </p>
         </div>
-
         <div>
           <p className="text-[9px] uppercase tracking-wider text-white/15">
             Attendance
           </p>
-
           <div className="mt-1">
             <AttendanceBadge
-              attendance={participant.attendance}
+              attendance={registration.attendance}
             />
           </div>
         </div>
       </div>
-
       <div className="mt-4 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2">
         <p className="text-[8px] uppercase tracking-wider text-white/15">
-          Ticket ID
+          QR Token
         </p>
-
         <p className="mt-1 font-mono text-[9px] text-white/30">
-          {participant.ticketId}
+          {registration.qr_token}
         </p>
       </div>
     </div>
@@ -775,12 +688,11 @@ function StatusBadge({
 }: {
   status: RegistrationStatus;
 }) {
-  const styles = {
+  const styles: Record<RegistrationStatus, string> = {
     Paid: "bg-emerald-400/10 text-emerald-300",
     Pending: "bg-amber-400/10 text-amber-300",
     Cancelled: "bg-red-400/10 text-red-300",
   };
-
   return (
     <span
       className={`rounded-full px-2.5 py-1 text-[9px] ${styles[status]}`}
@@ -803,7 +715,6 @@ function AttendanceBadge({
       </span>
     );
   }
-
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] px-2.5 py-1 text-[9px] text-white/25">
       <Clock3 size={10} />
@@ -818,23 +729,12 @@ function EmptyState() {
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.04] text-white/20">
         <Search size={18} />
       </div>
-
       <h3 className="mt-4 text-sm font-semibold">
         No participants found
       </h3>
-
       <p className="mt-2 text-[10px] text-white/25">
         Try changing your search or filters.
       </p>
     </div>
   );
-}
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 }

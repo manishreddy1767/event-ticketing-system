@@ -1,13 +1,29 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 
 from app.database import Base
 
 
 class Event(Base):
     __tablename__ = "events"
+
+    __table_args__ = (
+        CheckConstraint(
+            "capacity > 0",
+            name="ck_event_capacity_positive",
+        ),
+        CheckConstraint(
+            "max_discount_percent >= 0 AND max_discount_percent <= 100",
+            name="ck_event_discount_range",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected')",
+            name="ck_event_status_valid",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
@@ -48,6 +64,11 @@ class Event(Base):
         Numeric(5, 2),
         nullable=False,
         default=0,
+    )
+
+    certificate_template_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -12,15 +12,27 @@ import {
   MapPin,
   QrCode,
   ShieldCheck,
+  Sparkles,
   Ticket,
-  Users,
+  XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
+import {
+  getMyTickets,
+  getEvents,
+  getEventTicketTypes,
+  getMyTeam,
+  getTicketQr,
+} from "@/lib/api";
 
-type TicketStatus = "confirmed" | "checked-in";
+type TicketStatus =
+  | "reserved"
+  | "paid"
+  | "checked_in"
+  | "cancelled";
 
 type EventTicket = {
-  id: string;
+  id: number;
   event: string;
   team: string;
   ticketType: string;
@@ -30,475 +42,734 @@ type EventTicket = {
   time: string;
   venue: string;
   status: TicketStatus;
-  certificate: "available" | "pending";
+  certificate: "available" | "pending" | "not_eligible";
+  qrToken: string;
+  totalAmount: number;
 };
 
-const tickets: EventTicket[] = [
-  {
-    id: "EVT-AI26-7F31",
-    event: "AI Hackathon 2026",
-    team: "Neural Ninjas",
-    ticketType: "Team of 3",
-    participant: "Rahul Kumar",
-    rollNumber: "23A81A0501",
-    date: "12 September 2026",
-    time: "9:00 AM – 6:00 PM",
-    venue: "Main Auditorium",
-    status: "confirmed",
-    certificate: "pending",
-  },
-  {
-    id: "EVT-WEB26-91D4",
-    event: "Web Innovation Challenge",
-    team: "Solo Participant",
-    ticketType: "Individual",
-    participant: "Rahul Kumar",
-    rollNumber: "23A81A0501",
-    date: "20 September 2026",
-    time: "10:00 AM – 4:00 PM",
-    venue: "Innovation Lab",
-    status: "checked-in",
-    certificate: "available",
-  },
-];
-
 export default function MyTicketsPage() {
+  const [tickets, setTickets] = useState<EventTicket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] =
-    useState<EventTicket | null>(tickets[0]);
+    useState<EventTicket | null>(null);
+
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrImage, setQrImage] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+
+  // ============================================================
+  // Load tickets
+  // ============================================================
+
+  useEffect(() => {
+    async function fetchTickets() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const apiTickets = await getMyTickets();
+        const apiEvents = await getEvents();
+        const eventTicketTypes = await Promise.all(
+          apiEvents.map(async (event) => ({
+            event,
+            ticketTypes: await getEventTicketTypes(event.id),
+          }))
+        );
+
+        const transformedTickets = await Promise.all(
+          apiTickets.map(async (apiTicket) => {
+            const eventData = eventTicketTypes.find((item) =>
+              item.ticketTypes.some((tt) => tt.id === apiTicket.ticket_type_id)
+            );
+            const event = eventData?.event;
+            const ticketType = eventData?.ticketTypes.find(
+              (tt) => tt.id === apiTicket.ticket_type_id
+            );
+            const teamData = apiTicket.team_id
+              ? await getMyTeam(apiTicket.team_id).catch(() => null)
+              : null;
+            const eventDate = event ? new Date(event.event_date) : new Date();
+
+            return {
+              id: apiTicket.id,
+              event: event?.title || "Event",
+              team: teamData?.name || (apiTicket.team_id ? "Team" : "Individual"),
+              ticketType: ticketType?.name || "Ticket",
+              participant: "You",
+              rollNumber: "",
+              date: eventDate.toLocaleDateString(
+                "en-US",
+                {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                },
+              ),
+              time: eventDate.toLocaleTimeString(
+                "en-US",
+                {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                },
+              ),
+              venue: event?.venue || "Venue",
+              status: apiTicket.status as TicketStatus,
+              certificate:
+                apiTicket.status === "checked_in"
+                  ? ("available" as const)
+                  : ("pending" as const),
+              qrToken: apiTicket.qr_token,
+              totalAmount: Number(apiTicket.total_amount),
+            };
+          }),
+        );
+
+        setTickets(transformedTickets);
+
+        if (transformedTickets.length > 0) {
+          setSelectedTicket(transformedTickets[0]);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load tickets",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchTickets();
+  }, []);
+
+  // ============================================================
+  // Load real QR image whenever selected ticket changes
+  // ============================================================
+
+  useEffect(() => {
+    if (
+      !selectedTicket ||
+      selectedTicket.status !== "paid"
+    ) {
+      setQrImage(null);
+      setQrError(null);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    async function loadQr() {
+      try {
+        setQrLoading(true);
+        setQrError(null);
+        setQrImage(null);
+
+        const blob = await getTicketQr(
+          selectedTicket!.id,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        objectUrl = URL.createObjectURL(blob);
+        setQrImage(objectUrl);
+      } catch (err) {
+        if (!cancelled) {
+          console.error(
+            "Failed to load QR:",
+            err,
+          );
+
+          setQrError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load QR code",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setQrLoading(false);
+        }
+      }
+    }
+
+    loadQr();
+
+    return () => {
+      cancelled = true;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [selectedTicket]);
+
+  // ============================================================
+  // Download real QR PNG
+  // ============================================================
+
+  const handleDownloadQR = async (
+    ticket: EventTicket,
+  ) => {
+    if (ticket.status !== "paid") {
+      return;
+    }
+
+    setQrLoading(true);
+    setQrError(null);
+
+    try {
+      const blob = await getTicketQr(ticket.id);
+
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = `evently-ticket-${ticket.id}-qr.png`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(
+        "Failed to download QR:",
+        err,
+      );
+
+      setQrError(
+        err instanceof Error
+          ? err.message
+          : "Failed to download QR code",
+      );
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  // ============================================================
+  // Retry QR loading
+  // ============================================================
+
+  const handleRetryQR = async (ticket: EventTicket) => {
+    if (ticket.status !== "paid") {
+      return;
+    }
+
+    setQrLoading(true);
+    setQrError(null);
+
+    try {
+      const blob = await getTicketQr(ticket.id);
+      const url = URL.createObjectURL(blob);
+
+      setQrImage((previousUrl) => {
+        if (previousUrl) {
+          URL.revokeObjectURL(previousUrl);
+        }
+        return url;
+      });
+    } catch (err) {
+      console.error("Failed to reload QR:", err);
+      setQrError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load QR code",
+      );
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  // ============================================================
+  // Status badge
+  // ============================================================
+
+  const getStatusBadge = (
+    status: TicketStatus,
+  ) => {
+    switch (status) {
+      case "paid":
+        return (
+          <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+            <CheckCircle2 className="h-3 w-3" />
+            Confirmed
+          </span>
+        );
+
+      case "checked_in":
+        return (
+          <span className="flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-400">
+            <ShieldCheck className="h-3 w-3" />
+            Checked in
+          </span>
+        );
+
+      case "reserved":
+        return (
+          <span className="flex items-center gap-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-medium text-yellow-400">
+            <Clock3 className="h-3 w-3" />
+            Reserved
+          </span>
+        );
+
+      default:
+        return (
+          <span className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-medium text-red-400">
+            <XCircle className="h-3 w-3" />
+            Cancelled
+          </span>
+        );
+    }
+  };
+
+  // ============================================================
+  // Loading
+  // ============================================================
+
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/events"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <ArrowLeft size={15} />
+              </Link>
+
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-white/20">
+                  Tickets
+                </p>
+
+                <h1 className="mt-1 text-sm font-semibold">
+                  My Tickets
+                </h1>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+          <div className="animate-pulse space-y-4">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-32 rounded-2xl border border-white/10 bg-white/[0.02]"
+              />
+            ))}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // ============================================================
+  // Main page
+  // ============================================================
 
   return (
     <main className="campus-background min-h-screen">
-      {/* =========================
-          NAVBAR
-      ========================= */}
-
-      <header className="fixed inset-x-0 top-0 z-50">
-        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-          <nav className="flex h-16 items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 backdrop-blur-xl sm:px-6">
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3">
             <Link
-              href="/"
-              className="flex items-center gap-2.5"
+              href="/events"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-black text-black">
-                E
-              </div>
-
-              <span className="text-lg font-bold tracking-tight">
-                Evently
-              </span>
+              <ArrowLeft size={15} />
             </Link>
 
-            <div className="hidden items-center gap-8 md:flex">
-              <Link
-                href="/events"
-                className="text-sm text-white/45 transition hover:text-white"
-              >
-                Events
-              </Link>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-white/20">
+                Tickets
+              </p>
 
-              <Link
-                href="/team/invitations"
-                className="text-sm text-white/45 transition hover:text-white"
-              >
-                Invitations
-              </Link>
-
-              <span className="text-sm font-medium text-white">
+              <h1 className="mt-1 text-sm font-semibold">
                 My Tickets
-              </span>
+              </h1>
             </div>
+          </div>
 
-            <span className="text-sm text-white/50">
-              My Account
-            </span>
-          </nav>
+          <Link
+            href="/events"
+            className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-2 text-[10px] font-medium text-white/60 transition hover:bg-white/[0.05] hover:text-white"
+          >
+            Browse Events
+          </Link>
         </div>
       </header>
 
-      {/* =========================
-          CONTENT
-      ========================= */}
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+            {error}
+          </div>
+        )}
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 pt-32 sm:px-6 lg:px-8">
-        <Link
-          href="/events"
-          className="inline-flex items-center gap-2 text-sm text-white/40 transition hover:text-white"
-        >
-          <ArrowLeft size={16} />
-          Browse events
-        </Link>
+        {tickets.length === 0 ? (
+          <div className="py-16 text-center">
+            <Ticket className="mx-auto h-12 w-12 text-white/20" />
 
-        <div className="mt-8">
-          <p className="text-sm font-medium text-violet-300">
-            Your event access
-          </p>
+            <h3 className="mt-4 text-lg font-medium">
+              No tickets yet
+            </h3>
 
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">
-            My tickets.
-          </h1>
+            <p className="mt-2 text-white/40">
+              Start exploring events and book your first ticket
+            </p>
 
-          <p className="mt-4 max-w-xl text-sm leading-6 text-white/40">
-            Every ticket is linked to your student account.
-            Use your personal QR code for event check-in.
-          </p>
-        </div>
-
-        {/* =========================
-            TICKET LAYOUT
-        ========================= */}
-
-        <div className="mt-10 grid gap-6 lg:grid-cols-[380px_1fr]">
-
-          {/* =========================
-              TICKET LIST
-          ========================= */}
-
-          <div className="space-y-3">
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-[10px] uppercase tracking-wider text-white/25">
-                Registered events
-              </p>
-
-              <span className="text-[10px] text-white/25">
-                {tickets.length} tickets
-              </span>
-            </div>
-
-            {tickets.map((ticket) => {
-              const selected =
-                selectedTicket?.id === ticket.id;
-
-              return (
+            <Link
+              href="/events"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90"
+            >
+              Browse Events
+              <ArrowLeft className="h-4 w-4 rotate-180" />
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-4">
+            {/* Ticket List */}
+            <div className="space-y-3 lg:col-span-1">
+              {tickets.map((ticket) => (
                 <button
                   key={ticket.id}
-                  type="button"
-                  onClick={() => setSelectedTicket(ticket)}
-                  className={`w-full rounded-2xl border p-5 text-left transition ${
-                    selected
-                      ? "border-violet-400/30 bg-violet-400/[0.06]"
-                      : "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]"
+                  onClick={() =>
+                    setSelectedTicket(ticket)
+                  }
+                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                    selectedTicket?.id === ticket.id
+                      ? "border-violet-500/50 bg-violet-500/10"
+                      : "border-white/10 bg-white/[0.02] hover:border-white/20"
                   }`}
                 >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05]">
+                    <Ticket className="h-6 w-6 text-white/60" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">
+                      {ticket.event}
+                    </p>
+
+                    <p className="truncate text-sm text-white/50">
+                      {ticket.date}
+                    </p>
+                  </div>
+
+                  {getStatusBadge(ticket.status)}
+                </button>
+              ))}
+            </div>
+
+            {/* Ticket Detail */}
+            <div className="lg:col-span-3">
+              {selectedTicket ? (
+                <motion.div
+                  key={selectedTicket.id}
+                  initial={{
+                    opacity: 0,
+                    x: 20,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    x: 0,
+                  }}
+                  className="rounded-2xl border border-white/10 bg-[#0c101a]/50 p-6"
+                >
+                  {/* Ticket Header */}
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                          selected
-                            ? "bg-violet-400/10 text-violet-300"
-                            : "bg-white/[0.05] text-white/30"
-                        }`}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-white/60">
+                          {selectedTicket.ticketType}
+                        </span>
+
+                        {getStatusBadge(
+                          selectedTicket.status,
+                        )}
+                      </div>
+
+                      <h2 className="mt-2 text-2xl font-bold tracking-tight">
+                        {selectedTicket.event}
+                      </h2>
+
+                      <p className="mt-1 text-white/50">
+                        {selectedTicket.team}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-3">
+                      <button
+                        onClick={() =>
+                          handleDownloadQR(
+                            selectedTicket,
+                          )
+                        }
+                        disabled={
+                          qrLoading ||
+                          selectedTicket.status !==
+                            "paid"
+                        }
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm font-medium text-white/60 transition hover:border-white/20 hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        <Ticket size={17} />
+                        <Download className="h-4 w-4" />
+
+                        {qrLoading
+                          ? "Loading..."
+                          : "Download QR"}
+                      </button>
+
+                      <Link
+                        href="/events"
+                        className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90"
+                      >
+                        Book More
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Ticket Information */}
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05]">
+                        <CalendarDays className="h-5 w-5 text-violet-400" />
                       </div>
 
                       <div>
-                        <p className="text-sm font-semibold">
-                          {ticket.event}
+                        <p className="text-xs text-white/40">
+                          Date
                         </p>
 
-                        <p className="mt-1 text-[10px] text-white/25">
-                          {ticket.team}
+                        <p className="font-medium">
+                          {selectedTicket.date}
                         </p>
                       </div>
                     </div>
 
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[9px] ${
-                        ticket.status === "checked-in"
-                          ? "bg-emerald-400/10 text-emerald-300"
-                          : "bg-violet-400/10 text-violet-300"
-                      }`}
-                    >
-                      {ticket.status === "checked-in"
-                        ? "Checked in"
-                        : "Confirmed"}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05]">
+                        <Clock3 className="h-5 w-5 text-cyan-400" />
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-white/40">
+                          Time
+                        </p>
+
+                        <p className="font-medium">
+                          {selectedTicket.time}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05]">
+                        <MapPin className="h-5 w-5 text-emerald-400" />
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-white/40">
+                          Venue
+                        </p>
+
+                        <p className="font-medium">
+                          {selectedTicket.venue}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05]">
+                        <ShieldCheck className="h-5 w-5 text-orange-400" />
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-white/40">
+                          Ticket ID
+                        </p>
+
+                        <p className="font-mono text-sm">
+                          {selectedTicket.id}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-5 flex items-center justify-between border-t border-white/[0.06] pt-4">
-                    <span className="text-[10px] text-white/30">
-                      {ticket.date}
-                    </span>
+                  {/* QR Code Section */}
+                  <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold">
+                        QR Ticket
+                      </h3>
 
-                    <span className="text-[10px] text-white/30">
-                      {ticket.ticketType}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* =========================
-              TICKET PREVIEW
-          ========================= */}
-
-          {selectedTicket && (
-            <motion.div
-              key={selectedTicket.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#0c101a]/95"
-            >
-              {/* Header */}
-
-              <div className="border-b border-white/[0.07] p-6 sm:p-8">
-                <div className="flex flex-wrap items-start justify-between gap-5">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-violet-400/10 px-3 py-1.5 text-[9px] font-medium text-violet-300">
-                        {selectedTicket.status ===
-                        "checked-in"
-                          ? "CHECKED IN"
-                          : "CONFIRMED"}
+                      <span className="text-sm text-white/50">
+                        Show this at check-in
                       </span>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-center">
+                      <div className="flex h-56 w-56 items-center justify-center rounded-xl bg-white p-4">
+                        {selectedTicket.status !==
+                        "paid" ? (
+                          <div className="text-center text-black">
+                            <ShieldCheck className="mx-auto h-16 w-16 opacity-40" />
+
+                            <p className="mt-3 text-sm">
+                              QR available after payment
+                            </p>
+                          </div>
+                        ) : qrLoading ? (
+                          <div className="text-center text-black">
+                            <QrCode className="mx-auto h-16 w-16 animate-pulse" />
+
+                            <p className="mt-3 text-sm">
+                              Loading QR...
+                            </p>
+                          </div>
+                        ) : qrImage ? (
+                          <img
+                            src={qrImage}
+                            alt={`QR code for ticket ${selectedTicket.id}`}
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <div className="text-center text-black">
+                            <QrCode className="mx-auto h-20 w-20 opacity-50" />
+
+                            <p className="mt-3 text-sm">
+                              QR code unavailable
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRetryQR(selectedTicket)
+                              }
+                              className="mt-3 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white transition hover:bg-black/80"
+                            >
+                              Try Again
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {qrError && (
+                      <p className="mt-3 text-center text-sm text-red-400">
+                        {qrError}
+                      </p>
+                    )}
+
+                    <p className="mt-4 text-center text-sm text-white/50">
+                      Scan at venue entrance for check-in
+                    </p>
+                  </div>
+
+                  {/* Payment Information */}
+                  <div className="mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-white/40">
+                          Payment Status
+                        </p>
+
+                        <p className="mt-1 font-semibold text-emerald-400">
+                          {selectedTicket.status ===
+                          "paid"
+                            ? "Payment Successful"
+                            : "Payment Pending"}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-xs text-white/40">
+                          Amount Paid
+                        </p>
+
+                        <p className="mt-1 text-lg font-bold">
+                          ₹
+                          {selectedTicket.totalAmount.toFixed(
+                            2,
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Certificate Section */}
+                  <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold">
+                        Certificate
+                      </h3>
 
                       {selectedTicket.certificate ===
                         "available" && (
-                        <span className="rounded-full bg-emerald-400/10 px-3 py-1.5 text-[9px] text-emerald-300">
-                          CERTIFICATE READY
+                        <Link
+                          href="/certificates"
+                          className="text-sm font-medium text-violet-400 hover:text-violet-300"
+                        >
+                          View Certificate
+                          <ExternalLink className="ml-1 inline h-3 w-3" />
+                        </Link>
+                      )}
+
+                      {selectedTicket.certificate ===
+                        "pending" && (
+                        <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-[10px] font-medium text-yellow-400">
+                          Available after check-in
+                        </span>
+                      )}
+
+                      {selectedTicket.certificate ===
+                        "not_eligible" && (
+                        <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[10px] font-medium text-red-400">
+                          Not eligible
                         </span>
                       )}
                     </div>
 
-                    <h2 className="mt-4 text-2xl font-semibold tracking-tight">
-                      {selectedTicket.event}
-                    </h2>
-
-                    <p className="mt-2 text-xs text-white/30">
-                      {selectedTicket.team} •{" "}
-                      {selectedTicket.ticketType}
+                    <p className="mt-2 text-sm text-white/50">
+                      {selectedTicket.certificate ===
+                      "available"
+                        ? "Your certificate is ready for download"
+                        : selectedTicket.certificate ===
+                            "pending"
+                          ? "Certificates are issued after event attendance is confirmed"
+                          : "Certificates are only issued to attendees who checked in"}
                     </p>
                   </div>
+                </motion.div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-[#0c101a]/50 p-12 text-center">
+                  <Sparkles className="mx-auto h-12 w-12 text-white/20" />
 
-                  <Ticket
-                    size={22}
-                    className="text-white/20"
-                  />
-                </div>
-              </div>
+                  <h3 className="mt-4 text-lg font-medium">
+                    Select a ticket
+                  </h3>
 
-              {/* Ticket body */}
-
-              <div className="grid md:grid-cols-[1fr_260px]">
-
-                {/* Information */}
-
-                <div className="p-6 sm:p-8">
-                  <p className="text-[10px] uppercase tracking-wider text-white/25">
-                    Participant
+                  <p className="mt-2 text-white/40">
+                    Choose a ticket from the list to view
+                    details
                   </p>
-
-                  <div className="mt-4">
-                    <p className="text-xl font-semibold">
-                      {selectedTicket.participant}
-                    </p>
-
-                    <p className="mt-1 text-xs text-white/30">
-                      {selectedTicket.rollNumber}
-                    </p>
-                  </div>
-
-                  <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                      <CalendarDays
-                        size={15}
-                        className="text-white/25"
-                      />
-
-                      <p className="mt-3 text-[10px] text-white/25">
-                        Date
-                      </p>
-
-                      <p className="mt-1 text-xs font-medium">
-                        {selectedTicket.date}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                      <Clock3
-                        size={15}
-                        className="text-white/25"
-                      />
-
-                      <p className="mt-3 text-[10px] text-white/25">
-                        Time
-                      </p>
-
-                      <p className="mt-1 text-xs font-medium">
-                        {selectedTicket.time}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 sm:col-span-2">
-                      <MapPin
-                        size={15}
-                        className="text-white/25"
-                      />
-
-                      <p className="mt-3 text-[10px] text-white/25">
-                        Venue
-                      </p>
-
-                      <p className="mt-1 text-xs font-medium">
-                        {selectedTicket.venue}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Team */}
-
-                  <div className="mt-8 border-t border-white/[0.07] pt-7">
-                    <div className="flex items-center gap-3">
-                      <Users
-                        size={16}
-                        className="text-violet-300"
-                      />
-
-                      <div>
-                        <p className="text-xs font-medium">
-                          {selectedTicket.team}
-                        </p>
-
-                        <p className="mt-1 text-[10px] text-white/25">
-                          Your team registration
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ticket ID */}
-
-                  <div className="mt-7 border-t border-white/[0.07] pt-7">
-                    <p className="text-[10px] uppercase tracking-wider text-white/25">
-                      Ticket ID
-                    </p>
-
-                    <p className="mt-2 font-mono text-xs text-white/50">
-                      {selectedTicket.id}
-                    </p>
-                  </div>
                 </div>
-
-                {/* QR */}
-
-                <div className="border-t border-white/[0.07] bg-white/[0.015] p-6 sm:p-8 md:border-l md:border-t-0">
-                  <div className="flex h-full flex-col items-center justify-center text-center">
-
-                    <div className="rounded-2xl border border-white/10 bg-white p-5">
-                      {/* 
-                       * Frontend placeholder.
-                       * Later this will be replaced by a real QR
-                       * generated from the backend ticket ID.
-                       */}
-                      <div className="flex h-44 w-44 items-center justify-center bg-black">
-                        <div className="grid grid-cols-7 gap-1">
-                          {Array.from({
-                            length: 49,
-                          }).map((_, index) => {
-                            const pattern =
-                              (index * 17 +
-                                index * index) %
-                              5;
-
-                            return (
-                              <div
-                                key={index}
-                                className={`h-4 w-4 ${
-                                  pattern < 2
-                                    ? "bg-white"
-                                    : "bg-black"
-                                }`}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex items-center gap-2 text-emerald-300">
-                      <QrCode size={15} />
-
-                      <span className="text-[10px] font-medium">
-                        Personal QR ticket
-                      </span>
-                    </div>
-
-                    <p className="mt-2 max-w-[220px] text-[10px] leading-4 text-white/25">
-                      Present this QR code at the event
-                      entrance for attendance verification.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-
-              <div className="border-t border-white/[0.07] p-6 sm:p-8">
-                <div className="flex flex-col gap-3 sm:flex-row">
-
-                  <button
-                    type="button"
-                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-white text-xs font-semibold text-black transition hover:bg-white/90"
-                  >
-                    <Download size={15} />
-                    Download ticket
-                  </button>
-
-                  {selectedTicket.certificate ===
-                    "available" && (
-                    <Link
-                      href="/certificates"
-                      className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-400/10 bg-emerald-400/[0.04] text-xs font-medium text-emerald-300 transition hover:bg-emerald-400/[0.08]"
-                    >
-                      View certificate
-                      <ExternalLink size={14} />
-                    </Link>
-                  )}
-                </div>
-
-                <div className="mt-5 flex items-start gap-2 text-[10px] leading-4 text-white/25">
-                  <ShieldCheck
-                    size={14}
-                    className="mt-0.5 shrink-0 text-emerald-400/70"
-                  />
-
-                  This ticket belongs to{" "}
-                  {selectedTicket.participant}. Do not share
-                  your QR code with another participant.
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </div>
-
-        {/* =========================
-            ATTENDANCE INFO
-        ========================= */}
-
-        <div className="mt-6 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
-          <div className="flex items-start gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-300">
-              <CheckCircle2 size={18} />
-            </div>
-
-            <div>
-              <p className="text-sm font-medium">
-                Attendance is individual
-              </p>
-
-              <p className="mt-1 max-w-3xl text-xs leading-5 text-white/30">
-                Every team member has their own ticket and QR
-                code. When the organiser scans a member&apos;s
-                QR code, only that student&apos;s attendance is
-                recorded. This also determines their
-                eligibility for a participation or winner
-                certificate.
-              </p>
+              )}
             </div>
           </div>
-        </div>
-      </section>
+        )}
+      </div>
     </main>
   );
 }

@@ -1,547 +1,331 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
   CalendarDays,
-  Check,
   CheckCircle2,
   Clock3,
   MapPin,
-  ShieldCheck,
+  UserPlus,
   Users,
-  X,
+  XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
+import {
+  acceptTeamInvitation,
+  rejectTeamInvitation,
+  getMyTeamInvitations,
+  getMyTeam,
+  getEvent,
+  type ApiTeamInvitation,
+  type ApiTeam,
+  type ApiEvent,
+} from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
-type InvitationStatus =
-  | "pending"
-  | "accepted"
-  | "declined";
-
-const invitation = {
-  id: 1,
-  event: {
-    title: "AI Hackathon 2026",
-    date: "12 September 2026",
-    time: "9:00 AM – 6:00 PM",
-    venue: "Main Auditorium",
-  },
-  team: {
-    name: "Neural Ninjas",
-    size: 3,
-  },
-  inviter: {
-    name: "Manish Reddy",
-    rollNumber: "23A81A05XX",
-  },
-  expiresIn: "24 hours",
+type InvitationData = ApiTeamInvitation & {
+  team?: ApiTeam;
+  event?: ApiEvent;
 };
 
-const teamMembers = [
-  {
-    name: "Manish Reddy",
-    rollNumber: "23A81A05XX",
-    role: "Team Leader",
-    status: "Leader",
-  },
-  {
-    name: "Rahul Kumar",
-    rollNumber: "23A81A0501",
-    role: "Teammate",
-    status: "You",
-  },
-  {
-    name: "Priya Sharma",
-    rollNumber: "23A81A0512",
-    role: "Teammate",
-    status: "Pending",
-  },
-];
+export default function TeamInvitationsPage() {
+  const { user, loading: authLoading } = useAuth();
 
-export default function TeamInvitationPage() {
-  const [status, setStatus] =
-    useState<InvitationStatus>("pending");
+  const [invitations, setInvitations] = useState<InvitationData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function acceptInvitation() {
-    setStatus("accepted");
-  }
+  const loadInvitations = async () => {
+    if (!user) return;
 
-  function declineInvitation() {
-    setStatus("declined");
-  }
+    try {
+      setLoading(true);
+      setError(null);
 
-  /* =========================
-     ACCEPTED STATE
-  ========================= */
+      const invitationList = await getMyTeamInvitations();
 
-  if (status === "accepted") {
+      const enriched = await Promise.all(
+        invitationList.map(async (invitation) => {
+          try {
+            const team = await getMyTeam(invitation.team_id);
+            const event = await getEvent(team.event_id);
+
+            return {
+              ...invitation,
+              team,
+              event,
+            };
+          } catch {
+            return {
+              ...invitation,
+            };
+          }
+        })
+      );
+
+      setInvitations(enriched);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load team invitations"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (authLoading === false && user === null) {
+      window.location.href = "/login";
+      return;
+    }
+
+    if (user) {
+      loadInvitations();
+    }
+  }, [user, authLoading]);
+
+  const handleAccept = async (invitationId: number) => {
+    setProcessing(invitationId);
+    setError(null);
+
+    try {
+      await acceptTeamInvitation(invitationId);
+
+      setInvitations((prev) =>
+        prev.filter((invitation) => invitation.id !== invitationId)
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to accept invitation"
+      );
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleReject = async (invitationId: number) => {
+    setProcessing(invitationId);
+    setError(null);
+
+    try {
+      await rejectTeamInvitation(invitationId);
+
+      setInvitations((prev) =>
+        prev.filter((invitation) => invitation.id !== invitationId)
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to reject invitation"
+      );
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  if (authLoading || loading) {
     return (
-      <main className="campus-background flex min-h-screen items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-lg rounded-[2rem] border border-white/10 bg-[#0c101a]/95 p-8 text-center shadow-2xl"
-        >
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300">
-            <Check size={30} />
+      <main className="campus-background min-h-screen">
+        <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 w-48 rounded bg-white/10" />
+            <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
           </div>
-
-          <p className="mt-7 text-sm font-medium text-emerald-300">
-            Invitation accepted
-          </p>
-
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            You&apos;re on the team.
-          </h1>
-
-          <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-white/40">
-            You have joined{" "}
-            <span className="text-white/70">
-                {invitation.team.name}
-            </span>{" "}
-            for {invitation.event.title}. Your team leader will
-            complete the ticket purchase once all required members
-            accept their invitations.
-            </p>
-
-          <div className="mt-7 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 text-left">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-                <Users size={18} />
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold">
-                  {invitation.team.name}
-                </p>
-
-                <p className="mt-1 text-[10px] text-white/25">
-                  {invitation.team.size} members
-                </p>
-              </div>
-
-              <span className="ml-auto rounded-full bg-emerald-400/10 px-3 py-1.5 text-[10px] text-emerald-300">
-                Joined
-              </span>
-            </div>
-
-            <div className="mt-5 border-t border-white/[0.07] pt-5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/30">
-                  Event
-                </span>
-
-                <span className="text-xs text-white/60">
-                  {invitation.event.title}
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-xs text-white/30">
-                  Date
-                </span>
-
-                <span className="text-xs text-white/60">
-                  {invitation.event.date}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <Link
-            href="/events"
-            className="mt-6 flex h-12 items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-white/90"
-          >
-            View my tickets
-            <ArrowRight size={16} />
-          </Link>
-        </motion.div>
+        </div>
       </main>
     );
   }
 
-  /* =========================
-     DECLINED STATE
-  ========================= */
-
-  if (status === "declined") {
-    return (
-      <main className="campus-background flex min-h-screen items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-lg rounded-[2rem] border border-white/10 bg-[#0c101a]/95 p-8 text-center shadow-2xl"
-        >
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-400/10 text-red-300">
-            <X size={30} />
-          </div>
-
-          <p className="mt-7 text-sm font-medium text-red-300">
-            Invitation declined
-          </p>
-
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            You left the invitation.
-          </h1>
-
-          <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-white/40">
-            You have declined the invitation to join{" "}
-            {invitation.team.name}.
-          </p>
-
-          <Link
-            href="/events"
-            className="mt-7 flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-medium text-white transition hover:bg-white/[0.07]"
-          >
-            Back to events
-            <ArrowRight size={16} />
-          </Link>
-        </motion.div>
-      </main>
-    );
+  if (!user) {
+    return null;
   }
-
-  /* =========================
-     PENDING INVITATION
-  ========================= */
 
   return (
     <main className="campus-background min-h-screen">
-
-      {/* =========================
-          NAVBAR
-      ========================= */}
-
-      <header className="fixed inset-x-0 top-0 z-50">
-        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-          <nav className="flex h-16 items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 backdrop-blur-xl sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3">
             <Link
-              href="/"
-              className="flex items-center gap-2.5"
+              href="/events"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-black text-black">
-                E
-              </div>
-
-              <span className="text-lg font-bold tracking-tight">
-                Evently
-              </span>
+              <ArrowLeft size={15} />
             </Link>
 
-            <div className="hidden items-center gap-8 md:flex">
-              <Link
-                href="/events"
-                className="text-sm text-white/45 transition hover:text-white"
-              >
-                Events
-              </Link>
-
-              <span className="text-sm font-medium text-white">
-                Invitations
-              </span>
-
-              <Link
-                href="/tickets"
-                className="text-sm text-white/45 transition hover:text-white"
-              >
-                My Tickets
-              </Link>
-            </div>
-
-            <span className="text-sm text-white/50">
-              My Account
-            </span>
-          </nav>
-        </div>
-      </header>
-
-      {/* =========================
-          CONTENT
-      ========================= */}
-
-      <section className="mx-auto max-w-5xl px-4 pb-20 pt-32 sm:px-6 lg:px-8">
-
-        <Link
-          href="/events"
-          className="inline-flex items-center gap-2 text-sm text-white/40 transition hover:text-white"
-        >
-          <ArrowLeft size={16} />
-          Back to events
-        </Link>
-
-        <div className="mt-8">
-          <p className="text-sm font-medium text-violet-300">
-            Team invitation
-          </p>
-
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">
-            You&apos;ve been invited.
-          </h1>
-
-          <p className="mt-4 max-w-xl text-sm leading-6 text-white/40">
-            A teammate has invited you to participate in
-            an event. Review the details before joining the
-            team.
-          </p>
-        </div>
-
-        <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_340px]">
-
-          {/* =========================
-              INVITATION CARD
-          ========================= */}
-
-          <div className="rounded-[2rem] border border-white/10 bg-[#0c101a]/95 p-6 sm:p-8">
-
-            <div className="flex flex-wrap items-start justify-between gap-5">
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-white/25">
-                  Event
-                </p>
-
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                  {invitation.event.title}
-                </h2>
-              </div>
-
-              <span className="rounded-full border border-amber-400/10 bg-amber-400/[0.06] px-3 py-1.5 text-[10px] text-amber-300">
-                Pending response
-              </span>
-            </div>
-
-            {/* Event information */}
-
-            <div className="mt-7 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
-                <div className="flex items-center gap-2 text-white/25">
-                  <CalendarDays size={15} />
-
-                  <span className="text-[10px]">
-                    Date
-                  </span>
-                </div>
-
-                <p className="mt-3 text-xs font-medium">
-                  {invitation.event.date}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
-                <div className="flex items-center gap-2 text-white/25">
-                  <Clock3 size={15} />
-
-                  <span className="text-[10px]">
-                    Time
-                  </span>
-                </div>
-
-                <p className="mt-3 text-xs font-medium">
-                  {invitation.event.time}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4 sm:col-span-2">
-                <div className="flex items-center gap-2 text-white/25">
-                  <MapPin size={15} />
-
-                  <span className="text-[10px]">
-                    Venue
-                  </span>
-                </div>
-
-                <p className="mt-3 text-xs font-medium">
-                  {invitation.event.venue}
-                </p>
-              </div>
-            </div>
-
-            {/* Inviter */}
-
-            <div className="mt-7 border-t border-white/[0.07] pt-7">
-              <p className="text-[10px] uppercase tracking-wider text-white/25">
-                Invited by
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-white/20">
+                Teams
               </p>
-
-              <div className="mt-4 flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-400/10 text-sm font-semibold text-violet-300">
-                  MR
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium">
-                    {invitation.inviter.name}
-                  </p>
-
-                  <p className="mt-1 text-[10px] text-white/25">
-                    {invitation.inviter.rollNumber} • Team
-                    Leader
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Team */}
-
-            <div className="mt-7 border-t border-white/[0.07] pt-7">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/25">
-                    Team
-                  </p>
-
-                  <h3 className="mt-2 text-lg font-semibold">
-                    {invitation.team.name}
-                  </h3>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
-                  <Users size={18} />
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-2">
-                {teamMembers.map((member) => (
-                  <div
-                    key={member.rollNumber}
-                    className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
-                  >
-                    <div>
-                      <p className="text-xs font-medium">
-                        {member.name}
-                      </p>
-
-                      <p className="mt-1 text-[10px] text-white/25">
-                        {member.rollNumber}
-                      </p>
-                    </div>
-
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[9px] ${
-                        member.status === "You"
-                          ? "bg-violet-400/10 text-violet-300"
-                          : member.status === "Leader"
-                            ? "bg-emerald-400/10 text-emerald-300"
-                            : "bg-white/[0.05] text-white/30"
-                      }`}
-                    >
-                      {member.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Actions */}
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={declineInvitation}
-                className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] text-sm font-medium text-white/60 transition hover:bg-red-400/[0.05] hover:text-red-300"
-              >
-                <X size={16} />
-                Decline
-              </button>
-
-              <button
-                type="button"
-                onClick={acceptInvitation}
-                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:bg-white/90"
-              >
-                Accept invitation
-                <Check size={16} />
-              </button>
+              <h1 className="mt-1 text-sm font-semibold">
+                Team Invitations
+              </h1>
             </div>
           </div>
 
-          {/* =========================
-              SIDE PANEL
-          ========================= */}
+          <Link
+            href="/events"
+            className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-2 text-[10px] font-medium text-white/60 transition hover:bg-white/[0.05] hover:text-white"
+          >
+            Browse Events
+          </Link>
+        </div>
+      </header>
 
-          <aside className="space-y-4">
-
-            {/* Expiry */}
-
-            <div className="rounded-2xl border border-amber-400/10 bg-amber-400/[0.04] p-5">
-              <div className="flex items-start gap-3">
-                <Clock3
-                  size={17}
-                  className="mt-0.5 text-amber-300"
-                />
-
-                <div>
-                  <p className="text-xs font-medium text-amber-200">
-                    Invitation expires
-                  </p>
-
-                  <p className="mt-2 text-sm font-semibold">
-                    Within {invitation.expiresIn}
-                  </p>
-
-                  <p className="mt-2 text-[10px] leading-4 text-white/25">
-                    Accept the invitation before it expires
-                    to join the team.
-                  </p>
-                </div>
-              </div>
+      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+        <div className="mb-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/15">
+              <UserPlus className="h-6 w-6 text-violet-400" />
             </div>
 
-            {/* What happens */}
-
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
-              <p className="text-[10px] uppercase tracking-wider text-white/25">
-                After you accept
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">
+                Team Invitations
+              </h2>
+              <p className="mt-1 text-sm text-white/40">
+                Review invitations from other students
               </p>
+            </div>
+          </div>
+        </div>
 
-              <div className="mt-5 space-y-4">
-                {[
-                  "You become an official team member.",
-                  "Your registration is linked to your student account.",
-                  "You receive your own event ticket and QR code.",
-                  "Your attendance and certificate are recorded separately.",
-                ].map((item, index) => (
-                  <div
-                    key={item}
-                    className="flex gap-3"
-                  >
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300">
-                      <Check size={12} />
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+
+        {invitations.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-[#0c101a]/50 p-10 text-center">
+            <Users className="mx-auto h-12 w-12 text-white/20" />
+
+            <h3 className="mt-4 text-lg font-semibold">
+              No pending invitations
+            </h3>
+
+            <p className="mt-2 text-sm text-white/40">
+              You don't have any team invitations waiting for your response.
+            </p>
+
+            <Link
+              href="/events"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90"
+            >
+              Browse Events
+              <ArrowLeft className="h-4 w-4 rotate-180" />
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {invitations.map((invitation) => (
+              <motion.div
+                key={invitation.id}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl border border-white/10 bg-[#0c101a]/50 p-6"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-violet-500/15 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-violet-400">
+                        Team Invitation
+                      </span>
+
+                      <span className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-[10px] font-medium text-amber-400">
+                        <Clock3 className="h-3 w-3" />
+                        Pending
+                      </span>
                     </div>
 
-                    <p className="text-[11px] leading-5 text-white/35">
-                      {item}
+                    <h3 className="mt-4 text-xl font-bold">
+                      {invitation.team?.name || "Team Invitation"}
+                    </h3>
+
+                    <p className="mt-1 text-sm text-white/50">
+                      You've been invited to join this team.
                     </p>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
 
-            {/* Security */}
+                {invitation.event && (
+                  <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                    <p className="font-semibold">
+                      {invitation.event.title}
+                    </p>
 
-            <div className="flex items-start gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
-              <ShieldCheck
-                size={17}
-                className="mt-0.5 shrink-0 text-emerald-400/70"
-              />
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <div className="flex items-center gap-2 text-sm text-white/50">
+                        <CalendarDays className="h-4 w-4 text-violet-400" />
+                        {new Date(
+                          invitation.event.event_date
+                        ).toLocaleDateString("en-US", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </div>
 
-              <div>
-                <p className="text-xs font-medium">
-                  Verified student account
-                </p>
+                      <div className="flex items-center gap-2 text-sm text-white/50">
+                        <Clock3 className="h-4 w-4 text-cyan-400" />
+                        {new Date(
+                          invitation.event.event_date
+                        ).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </div>
 
-                <p className="mt-1 text-[10px] leading-4 text-white/25">
-                  Your invitation is tied to your Evently
-                  student account, so another student cannot
-                  accept it on your behalf.
-                </p>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </section>
+                      <div className="flex items-center gap-2 text-sm text-white/50">
+                        <MapPin className="h-4 w-4 text-emerald-400" />
+                        <span className="truncate">
+                          {invitation.event.venue}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleAccept(invitation.id)}
+                    disabled={processing !== null}
+                    className="flex-1 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {processing === invitation.id ? (
+                      "Processing..."
+                    ) : (
+                      <>
+                        <CheckCircle2 className="mr-2 inline-block h-4 w-4" />
+                        Accept
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleReject(invitation.id)}
+                    disabled={processing !== null}
+                    className="flex-1 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/70 transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <XCircle className="mr-2 inline-block h-4 w-4" />
+                    Reject
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

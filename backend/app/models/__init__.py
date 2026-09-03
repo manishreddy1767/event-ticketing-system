@@ -7,6 +7,7 @@ from app.models.payment import Payment
 from app.models.attendance import Attendance
 from app.models.team import Team
 from app.models.team_member import TeamMember
+from app.models.team_invitation import TeamInvitation
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "Attendance",
     "Team",
     "TeamMember",
+    "TeamInvitation",
 ]

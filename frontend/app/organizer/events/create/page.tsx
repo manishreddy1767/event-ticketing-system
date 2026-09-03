@@ -10,6 +10,7 @@ import {
   Clock3,
   FileText,
   ImagePlus,
+  Loader2,
   MapPin,
   Plus,
   Save,
@@ -19,6 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { createEvent, createTicketType, type ApiEvent } from "@/lib/api";
 
 const categories = [
   "Hackathon",
@@ -35,6 +37,8 @@ export default function CreateEventPage() {
 
   const [published, setPublished] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(
     null
   );
@@ -51,7 +55,10 @@ export default function CreateEventPage() {
     registrationEnd: "",
     venue: "",
     capacity: "100",
+    maxDiscountPercent: "20",
     teamSize: "1",
+    ticketName: "General Admission",
+    ticketPrice: "0",
     certificateEnabled: true,
     rules: "",
   });
@@ -67,6 +74,7 @@ export default function CreateEventPage() {
 
     setSaved(false);
     setPublished(false);
+    setError(null);
   }
 
   function handleImageChange(
@@ -123,11 +131,41 @@ export default function CreateEventPage() {
     setPublished(false);
   }
 
-  function handlePublish(event: FormEvent<HTMLFormElement>) {
+  async function handlePublish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    setPublished(true);
+    setError(null);
+    setLoading(true);
+    setPublished(false);
     setSaved(false);
+
+    try {
+      // Combine date and time for event_date
+      const eventDateTime = `${form.eventDate}T${form.startTime}:00`;
+
+      // Create the event
+      const newEvent: ApiEvent = await createEvent({
+        title: form.title,
+        description: form.description,
+        venue: form.venue,
+        event_date: eventDateTime,
+        capacity: Number(form.capacity),
+        max_discount_percent: Number(form.maxDiscountPercent),
+      });
+
+      // Create the ticket type
+      await createTicketType(newEvent.id, {
+        name: form.ticketName,
+        price: Number(form.ticketPrice),
+        capacity: Number(form.capacity),
+        team_size: Number(form.teamSize),
+      });
+
+      setPublished(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create event");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -299,9 +337,27 @@ export default function CreateEventPage() {
                     </p>
 
                     <p className="mt-1 text-[10px] text-white/30">
-                      The event configuration has been
-                      validated. Backend publishing will be
-                      connected later.
+                      The event and ticket type have been created on the backend.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="mt-6 rounded-2xl border border-red-400/10 bg-red-400/[0.04] p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-400/10 text-red-300">
+                    <ShieldCheck size={15} />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-red-300">
+                      Failed to create event
+                    </p>
+
+                    <p className="mt-1 text-[10px] text-white/30">
+                      {error}
                     </p>
                   </div>
                 </div>
@@ -769,11 +825,85 @@ export default function CreateEventPage() {
                       id="teamSize"
                       type="number"
                       min="1"
+                      max="3"
                       required
                       value={form.teamSize}
                       onChange={(event) =>
                         updateField(
                           "teamSize",
+                          event.target.value
+                        )
+                      }
+                      className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="maxDiscountPercent"
+                      className="text-[10px] uppercase tracking-wider text-white/25"
+                    >
+                      Maximum discount (%)
+                    </label>
+
+                    <input
+                      id="maxDiscountPercent"
+                      type="number"
+                      min="0"
+                      max="100"
+                      required
+                      value={form.maxDiscountPercent}
+                      onChange={(event) =>
+                        updateField(
+                          "maxDiscountPercent",
+                          event.target.value
+                        )
+                      }
+                      className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="ticketName"
+                      className="text-[10px] uppercase tracking-wider text-white/25"
+                    >
+                      Ticket type name
+                    </label>
+
+                    <input
+                      id="ticketName"
+                      required
+                      value={form.ticketName}
+                      onChange={(event) =>
+                        updateField(
+                          "ticketName",
+                          event.target.value
+                        )
+                      }
+                      placeholder="e.g. General Admission"
+                      className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none placeholder:text-white/15 focus:border-violet-400/30"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="ticketPrice"
+                      className="text-[10px] uppercase tracking-wider text-white/25"
+                    >
+                      Ticket price (₹)
+                    </label>
+
+                    <input
+                      id="ticketPrice"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value={form.ticketPrice}
+                      onChange={(event) =>
+                        updateField(
+                          "ticketPrice",
                           event.target.value
                         )
                       }
@@ -1009,6 +1139,15 @@ export default function CreateEventPage() {
                     complete={
                       Number(form.capacity) > 0 &&
                       Number(form.teamSize) > 0
+                    }
+                  />
+
+                  <ChecklistItem
+                    label="Discount & ticket settings"
+                    complete={
+                      Number(form.maxDiscountPercent) >= 0 &&
+                      form.ticketName.trim().length > 0 &&
+                      Number(form.ticketPrice) >= 0
                     }
                   />
                 </div>

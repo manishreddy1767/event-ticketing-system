@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
   Check,
   CheckCircle2,
+  Loader2,
   Search,
   ShieldCheck,
   UserCog,
@@ -14,76 +15,44 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { getPendingOrganizers, approveOrganizer, rejectOrganizer } from "@/lib/api";
 
-type OrganizerStatus = "Active" | "Pending" | "Suspended";
+type OrganizerStatus = "active" | "pending" | "rejected";
 
 type Organizer = {
   id: number;
+  user_id: number;
   name: string;
   email: string;
-  department: string;
-  events: number;
-  participants: number;
+  organization_name: string;
+  phone: string;
+  description: string | null;
   status: OrganizerStatus;
+  created_at: string;
 };
 
-const initialOrganizers: Organizer[] = [
-  {
-    id: 1,
-    name: "CSE Department",
-    email: "cse@college.edu",
-    department: "Computer Science",
-    events: 12,
-    participants: 1840,
-    status: "Active",
-  },
-  {
-    id: 2,
-    name: "IEEE Student Branch",
-    email: "ieee@college.edu",
-    department: "Student Organization",
-    events: 8,
-    participants: 920,
-    status: "Active",
-  },
-  {
-    id: 3,
-    name: "Coding Club",
-    email: "coding@college.edu",
-    department: "Technical Club",
-    events: 6,
-    participants: 680,
-    status: "Pending",
-  },
-  {
-    id: 4,
-    name: "Innovation Cell",
-    email: "innovation@college.edu",
-    department: "Innovation & Entrepreneurship",
-    events: 9,
-    participants: 1140,
-    status: "Active",
-  },
-  {
-    id: 5,
-    name: "Robotics Club",
-    email: "robotics@college.edu",
-    department: "Technical Club",
-    events: 4,
-    participants: 310,
-    status: "Suspended",
-  },
-];
-
 export default function AdminOrganizersPage() {
-  const [organizers, setOrganizers] =
-    useState<Organizer[]>(initialOrganizers);
-
+  const [organizers, setOrganizers] = useState<Organizer[]>([]);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"All" | OrganizerStatus>("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
-  const [filter, setFilter] = useState<
-    "All" | OrganizerStatus
-  >("All");
+  useEffect(() => {
+    async function fetchOrganizers() {
+      try {
+        setLoading(true);
+        const data = await getPendingOrganizers();
+        setOrganizers(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load organizers");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchOrganizers();
+  }, []);
 
   const filteredOrganizers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -93,55 +62,103 @@ export default function AdminOrganizersPage() {
         !query ||
         organizer.name.toLowerCase().includes(query) ||
         organizer.email.toLowerCase().includes(query) ||
-        organizer.department.toLowerCase().includes(query);
+        organizer.organization_name.toLowerCase().includes(query);
 
       const matchesFilter =
-        filter === "All" ||
-        organizer.status === filter;
+        filter === "All" || organizer.status === filter;
 
       return matchesSearch && matchesFilter;
     });
   }, [organizers, search, filter]);
 
   const activeCount = organizers.filter(
-    (organizer) => organizer.status === "Active"
+    (organizer) => organizer.status === "active"
   ).length;
 
   const pendingCount = organizers.filter(
-    (organizer) => organizer.status === "Pending"
+    (organizer) => organizer.status === "pending"
   ).length;
 
-  const suspendedCount = organizers.filter(
-    (organizer) => organizer.status === "Suspended"
+  const rejectedCount = organizers.filter(
+    (organizer) => organizer.status === "rejected"
   ).length;
 
-  function approveOrganizer(id: number) {
-    setOrganizers((current) =>
-      current.map((organizer) =>
-        organizer.id === id
-          ? { ...organizer, status: "Active" }
-          : organizer
-      )
-    );
+  async function handleApproveOrganizer(id: number) {
+    setActionLoading(id);
+    try {
+      await approveOrganizer(id);
+      setOrganizers((current) =>
+        current.map((organizer) =>
+          organizer.id === id ? { ...organizer, status: "active" as const } : organizer
+        )
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to approve organizer");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  function suspendOrganizer(id: number) {
-    setOrganizers((current) =>
-      current.map((organizer) =>
-        organizer.id === id
-          ? { ...organizer, status: "Suspended" }
-          : organizer
-      )
-    );
+  async function handleRejectOrganizer(id: number) {
+    setActionLoading(id);
+    try {
+      await rejectOrganizer(id);
+      setOrganizers((current) =>
+        current.map((organizer) =>
+          organizer.id === id ? { ...organizer, status: "rejected" as const } : organizer
+        )
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to reject organizer");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  function activateOrganizer(id: number) {
-    setOrganizers((current) =>
-      current.map((organizer) =>
-        organizer.id === id
-          ? { ...organizer, status: "Active" }
-          : organizer
-      )
+  if (loading) {
+    return (
+      <main className="campus-background min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080b12]/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin/dashboard"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.02] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <ArrowLeft size={15} />
+              </Link>
+
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-white/20">
+                  Admin
+                </p>
+
+                <h1 className="mt-1 text-sm font-semibold">
+                  Organizer management
+                </h1>
+              </div>
+            </div>
+
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
+              <ShieldCheck size={16} />
+            </div>
+          </div>
+        </header>
+
+        <section className="px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+          <div className="mx-auto max-w-7xl">
+            <div className="animate-pulse space-y-8">
+              <div className="h-4 w-1/4 rounded bg-white/10" />
+              <div className="grid gap-6 sm:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-32 rounded-2xl border border-white/10 bg-white/[0.02]" />
+                ))}
+              </div>
+              <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.02]" />
+            </div>
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -190,8 +207,8 @@ export default function AdminOrganizersPage() {
             </h2>
 
             <p className="mt-3 max-w-2xl text-xs leading-5 text-white/35">
-              Review organizer accounts, monitor activity, and
-              control organizer access to the Evently platform.
+              Review organizer applications, approve or reject accounts,
+              and control organizer access to the Evently platform.
             </p>
           </div>
 
@@ -212,8 +229,8 @@ export default function AdminOrganizersPage() {
 
             <StatCard
               icon={<XCircle size={16} />}
-              label="Suspended"
-              value={suspendedCount}
+              label="Rejected"
+              value={rejectedCount}
             />
           </div>
 
@@ -232,7 +249,7 @@ export default function AdminOrganizersPage() {
                   onChange={(event) =>
                     setSearch(event.target.value)
                   }
-                  placeholder="Search organizer, email or department..."
+                  placeholder="Search organizer, email or organization..."
                   className="h-10 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] pl-9 pr-3 text-[10px] text-white outline-none placeholder:text-white/20 focus:border-violet-400/30"
                 />
               </div>
@@ -249,9 +266,9 @@ export default function AdminOrganizersPage() {
                 className="h-10 rounded-xl border border-white/[0.07] bg-[#0c101a] px-3 text-[10px] text-white/50 outline-none"
               >
                 <option value="All">All organizers</option>
-                <option value="Active">Active</option>
-                <option value="Pending">Pending</option>
-                <option value="Suspended">Suspended</option>
+                <option value="pending">Pending</option>
+                <option value="active">Active</option>
+                <option value="rejected">Rejected</option>
               </select>
             </div>
           </div>
@@ -261,7 +278,7 @@ export default function AdminOrganizersPage() {
           <div className="mt-6 overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02]">
             <div className="border-b border-white/[0.06] px-5 py-4">
               <p className="text-[9px] uppercase tracking-wider text-white/20">
-                Organizer accounts
+                Organizer applications
               </p>
 
               <p className="mt-1 text-xs text-white/35">
@@ -280,15 +297,19 @@ export default function AdminOrganizersPage() {
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                      Events
+                      Organization
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
-                      Participants
+                      Phone
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
                       Status
+                    </th>
+
+                    <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
+                      Applied
                     </th>
 
                     <th className="px-5 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
@@ -317,23 +338,19 @@ export default function AdminOrganizersPage() {
                             <p className="mt-1 text-[9px] text-white/20">
                               {organizer.email}
                             </p>
-
-                            <p className="mt-1 text-[9px] text-white/30">
-                              {organizer.department}
-                            </p>
                           </div>
                         </div>
                       </td>
 
                       <td className="px-5 py-4">
                         <span className="text-xs text-white/50">
-                          {organizer.events}
+                          {organizer.organization_name}
                         </span>
                       </td>
 
                       <td className="px-5 py-4">
                         <span className="text-xs text-white/50">
-                          {organizer.participants.toLocaleString()}
+                          {organizer.phone}
                         </span>
                       </td>
 
@@ -344,11 +361,17 @@ export default function AdminOrganizersPage() {
                       </td>
 
                       <td className="px-5 py-4">
+                        <span className="text-xs text-white/50">
+                          {new Date(organizer.created_at).toLocaleDateString()}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4">
                         <ActionButton
                           organizer={organizer}
-                          onApprove={approveOrganizer}
-                          onSuspend={suspendOrganizer}
-                          onActivate={activateOrganizer}
+                          onApprove={handleApproveOrganizer}
+                          onReject={handleRejectOrganizer}
+                          loading={actionLoading === organizer.id}
                         />
                       </td>
                     </tr>
@@ -390,29 +413,29 @@ export default function AdminOrganizersPage() {
                   <div className="mt-5 grid grid-cols-3 gap-3">
                     <InfoBox
                       icon={<CalendarDays size={12} />}
-                      label="Events"
-                      value={organizer.events}
+                      label="Organization"
+                      value={organizer.organization_name}
                     />
 
                     <InfoBox
                       icon={<Users size={12} />}
-                      label="Participants"
-                      value={organizer.participants}
+                      label="Phone"
+                      value={organizer.phone}
                     />
 
                     <InfoBox
                       icon={<UserCog size={12} />}
-                      label="Type"
-                      value="Organizer"
+                      label="Applied"
+                      value={new Date(organizer.created_at).toLocaleDateString()}
                     />
                   </div>
 
                   <div className="mt-4">
                     <ActionButton
                       organizer={organizer}
-                      onApprove={approveOrganizer}
-                      onSuspend={suspendOrganizer}
-                      onActivate={activateOrganizer}
+                      onApprove={handleApproveOrganizer}
+                      onReject={handleRejectOrganizer}
+                      loading={actionLoading === organizer.id}
                     />
                   </div>
                 </div>
@@ -452,10 +475,9 @@ export default function AdminOrganizersPage() {
                 </p>
 
                 <p className="mt-1 text-[10px] leading-5 text-white/25">
-                  Organizer approval and suspension are currently
-                  frontend-only actions. Authentication,
-                  permissions, and persistent account status will
-                  be enforced by the backend later.
+                  Approve or reject organizer applications. Approved
+                  organizers can create events and manage certificates.
+                  Rejected applications cannot be resubmitted.
                 </p>
               </div>
             </div>
@@ -497,7 +519,7 @@ function StatusBadge({
 }: {
   status: OrganizerStatus;
 }) {
-  if (status === "Active") {
+  if (status === "active") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[9px] text-emerald-300">
         <CheckCircle2 size={10} />
@@ -506,7 +528,7 @@ function StatusBadge({
     );
   }
 
-  if (status === "Pending") {
+  if (status === "pending") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 px-2.5 py-1 text-[9px] text-amber-300">
         Pending
@@ -517,7 +539,7 @@ function StatusBadge({
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-red-400/10 px-2.5 py-1 text-[9px] text-red-300">
       <XCircle size={10} />
-      Suspended
+      Rejected
     </span>
   );
 }
@@ -525,49 +547,48 @@ function StatusBadge({
 function ActionButton({
   organizer,
   onApprove,
-  onSuspend,
-  onActivate,
+  onReject,
+  loading,
 }: {
   organizer: Organizer;
   onApprove: (id: number) => void;
-  onSuspend: (id: number) => void;
-  onActivate: (id: number) => void;
+  onReject: (id: number) => void;
+  loading: boolean;
 }) {
-  if (organizer.status === "Pending") {
+  if (organizer.status === "pending") {
     return (
-      <button
-        type="button"
-        onClick={() => onApprove(organizer.id)}
-        className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[9px] font-semibold text-black transition hover:bg-white/90"
-      >
-        <Check size={11} />
-        Approve
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onApprove(organizer.id)}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[9px] font-semibold text-black transition hover:bg-white/90 disabled:opacity-50"
+        >
+          <Check size={11} />
+          Approve
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onReject(organizer.id)}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-3 py-2 text-[9px] text-red-300 transition hover:bg-red-400/[0.08] disabled:opacity-50"
+        >
+          <X size={11} />
+          Reject
+        </button>
+      </div>
     );
   }
 
-  if (organizer.status === "Active") {
+  if (organizer.status === "active") {
     return (
-      <button
-        type="button"
-        onClick={() => onSuspend(organizer.id)}
-        className="flex items-center gap-1.5 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-3 py-2 text-[9px] text-red-300 transition hover:bg-red-400/[0.08]"
-      >
-        <X size={11} />
-        Suspend
-      </button>
+      <span className="text-[9px] text-white/30">Approved</span>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => onActivate(organizer.id)}
-      className="flex items-center gap-1.5 rounded-lg border border-emerald-400/10 bg-emerald-400/[0.04] px-3 py-2 text-[9px] text-emerald-300 transition hover:bg-emerald-400/[0.08]"
-    >
-      <Check size={11} />
-      Activate
-    </button>
+    <span className="text-[9px] text-white/30">Rejected</span>
   );
 }
 

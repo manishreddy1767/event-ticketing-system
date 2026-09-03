@@ -1,18 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Award,
   CheckCircle2,
   Clock3,
   Download,
+  FileUp,
+  Loader2,
   Search,
   Send,
   Users,
   XCircle,
 } from "lucide-react";
+import { getEventCertificates, uploadCertificateTemplate, type ApiOrganizerCertificate } from "@/lib/api";
 
 type CertificateStatus = "Issued" | "Pending" | "Not eligible";
 
@@ -24,100 +27,8 @@ type Attendee = {
   team: string | null;
   attendance: "Present" | "Absent";
   certificate: CertificateStatus;
+  certificateCode?: string;
 };
-
-const attendees: Attendee[] = [
-  {
-    id: 1,
-    name: "Manish Reddy",
-    rollNumber: "23CSE042",
-    email: "manish@example.com",
-    team: "Team Alpha",
-    attendance: "Present",
-    certificate: "Issued",
-  },
-  {
-    id: 2,
-    name: "Rahul Kumar",
-    rollNumber: "23CSE046",
-    email: "rahul@example.com",
-    team: "Team Alpha",
-    attendance: "Present",
-    certificate: "Pending",
-  },
-  {
-    id: 3,
-    name: "Arjun Sharma",
-    rollNumber: "23CSE058",
-    email: "arjun@example.com",
-    team: "Team Alpha",
-    attendance: "Absent",
-    certificate: "Not eligible",
-  },
-  {
-    id: 4,
-    name: "Priya Sharma",
-    rollNumber: "23CSE061",
-    email: "priya@example.com",
-    team: null,
-    attendance: "Present",
-    certificate: "Issued",
-  },
-  {
-    id: 5,
-    name: "Sneha Patel",
-    rollNumber: "23CSE072",
-    email: "sneha@example.com",
-    team: "Code Queens",
-    attendance: "Present",
-    certificate: "Pending",
-  },
-  {
-    id: 6,
-    name: "Ananya Reddy",
-    rollNumber: "23CSE080",
-    email: "ananya@example.com",
-    team: "Code Queens",
-    attendance: "Absent",
-    certificate: "Not eligible",
-  },
-  {
-    id: 7,
-    name: "Karthik Rao",
-    rollNumber: "23CSE091",
-    email: "karthik@example.com",
-    team: null,
-    attendance: "Present",
-    certificate: "Pending",
-  },
-  {
-    id: 8,
-    name: "Sandeep Rao",
-    rollNumber: "23CSE104",
-    email: "sandeep@example.com",
-    team: "Innovation Squad",
-    attendance: "Present",
-    certificate: "Issued",
-  },
-  {
-    id: 9,
-    name: "Vikram Singh",
-    rollNumber: "23CSE109",
-    email: "vikram@example.com",
-    team: "Innovation Squad",
-    attendance: "Present",
-    certificate: "Issued",
-  },
-  {
-    id: 10,
-    name: "Aditi Rao",
-    rollNumber: "23CSE115",
-    email: "aditi@example.com",
-    team: "Innovation Squad",
-    attendance: "Present",
-    certificate: "Pending",
-  },
-];
 
 export default function OrganizerCertificatesPage() {
   const [search, setSearch] = useState("");
@@ -125,8 +36,38 @@ export default function OrganizerCertificatesPage() {
     "All" | CertificateStatus
   >("All");
 
-  const [certificateData, setCertificateData] =
-    useState<Attendee[]>(attendees);
+  const [certificateData, setCertificateData] = useState<Attendee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [templateUploaded, setTemplateUploaded] = useState(false);
+
+  // Fetch certificates on mount
+  useEffect(() => {
+    async function fetchCertificates() {
+      try {
+        setLoading(true);
+        const data = await getEventCertificates(1); // Hardcoded event ID for now
+        // Transform backend data to frontend format
+        const transformed = data.map((cert) => ({
+          id: cert.id,
+          name: cert.user?.name || "Unknown",
+          rollNumber: "", // Not available from backend
+          email: cert.user?.email || "",
+          team: null, // Not available from backend
+          attendance: "Present" as const, // Certificates only exist for present attendees
+          certificate: "Issued" as CertificateStatus,
+          certificateCode: cert.certificate_code,
+        }));
+        setCertificateData(transformed);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load certificates");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCertificates();
+  }, []);
 
   const filteredAttendees = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -159,6 +100,22 @@ export default function OrganizerCertificatesPage() {
     (attendee) => attendee.certificate === "Pending"
   ).length;
 
+  async function handleTemplateUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      await uploadCertificateTemplate(1, file); // Hardcoded event ID
+      setTemplateUploaded(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload template");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function issueCertificate(id: number) {
     setCertificateData((current) =>
       current.map((attendee) =>
@@ -186,9 +143,12 @@ export default function OrganizerCertificatesPage() {
   }
 
   function downloadCertificate(attendee: Attendee) {
-    alert(
-      `Certificate download for ${attendee.name} will be connected to the backend later.`
-    );
+    if (attendee.certificateCode) {
+      // In a real app, this would download the PDF
+      alert(`Downloading certificate ${attendee.certificateCode} for ${attendee.name}`);
+    } else {
+      alert(`Certificate download for ${attendee.name} - no certificate code available.`);
+    }
   }
 
   return (
@@ -288,6 +248,38 @@ export default function OrganizerCertificatesPage() {
                 <span className="text-[10px] text-white/40">
                   Attendance-based certificates
                 </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Certificate Template Upload */}
+          <div className="mt-6 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+                <FileUp size={17} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold">Certificate Template</h3>
+                <p className="mt-1 text-[10px] text-white/25">
+                  Upload a certificate template image (PNG/JPG) for this event.
+                  The template will be used when generating certificates.
+                </p>
+                {templateUploaded && (
+                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[9px] text-emerald-300">
+                    <CheckCircle2 size={10} />
+                    Template uploaded
+                  </span>
+                )}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleTemplateUpload}
+                  className="mt-4 w-full max-w-xs h-10 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 text-[10px] text-white outline-none placeholder:text-white/20 focus:border-violet-400/30"
+                  disabled={uploading}
+                />
+                {uploading && (
+                  <p className="mt-2 text-[10px] text-amber-300">Uploading...</p>
+                )}
               </div>
             </div>
           </div>
