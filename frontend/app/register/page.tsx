@@ -293,11 +293,11 @@ export default function RegisterPage() {
                 />
                 <span className="text-sm text-white/60">
                   I agree to the{" "}
-                  <a href="#" className="underline hover:text-white">
+                  <a href="/terms" className="underline hover:text-white">
                     Evently Terms of Service
                   </a>{" "}
                   and{" "}
-                  <a href="#" className="underline hover:text-white">
+                  <a href="/privacy" className="underline hover:text-white">
                     Privacy Policy
                   </a>
                 </span>
