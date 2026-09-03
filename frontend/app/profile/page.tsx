@@ -25,7 +25,12 @@ import {
   type ApiStudentProfile,
 } from "@/lib/api";
 
+import { useAuth } from "@/lib/auth";
+
 export default function ProfilePage() {
+  const { user } = useAuth();
+  const isStudent = user?.role === "student";
+
   const [profile, setProfile] = useState<ApiUser | null>(null);
   const [studentProfile, setStudentProfile] =
     useState<ApiStudentProfile | null>(null);
@@ -53,24 +58,28 @@ export default function ProfilePage() {
         setError(null);
 
         const userData = await getMe();
+
         console.log("PROFILE: getMe() succeeded", userData);
 
-        const studentData = await getStudentProfile();
-        console.log(
-          "PROFILE: getStudentProfile() succeeded",
-          studentData,
-        );
-
         setProfile(userData);
-        setStudentProfile(studentData);
-
         setName(userData.name);
         setEmail(userData.email);
 
-        setRollNumber(studentData.roll_number ?? "");
-        setDepartment(studentData.department ?? "");
-        setYear(studentData.year ?? "");
-        setCollege(studentData.college ?? "");
+        if (userData.role === "student") {
+          const studentData = await getStudentProfile();
+
+          console.log(
+            "PROFILE: getStudentProfile() succeeded",
+            studentData,
+          );
+
+          setStudentProfile(studentData);
+
+          setRollNumber(studentData.roll_number ?? "");
+          setDepartment(studentData.department ?? "");
+          setYear(studentData.year ?? "");
+          setCollege(studentData.college ?? "");
+        }
       } catch (err) {
         console.error("Failed to load profile:", err);
 
@@ -88,15 +97,21 @@ export default function ProfilePage() {
   }, []);
 
   async function handleSave() {
+    if (!name.trim() || !email.trim()) {
+      setError("Please fill in your name and email.");
+      return;
+    }
+
     if (
-      !name.trim() ||
-      !email.trim() ||
-      !rollNumber.trim() ||
-      !department.trim() ||
-      !year.trim() ||
-      !college.trim()
+      isStudent &&
+      (
+        !rollNumber.trim() ||
+        !department.trim() ||
+        !year.trim() ||
+        !college.trim()
+      )
     ) {
-      setError("Please fill in all profile fields.");
+      setError("Please fill in all student profile fields.");
       return;
     }
 
@@ -105,30 +120,31 @@ export default function ProfilePage() {
       setError(null);
       setSaved(false);
 
-      const [updatedUser, updatedStudent] =
-        await Promise.all([
-          updateMyProfile({
-            name: name.trim(),
-            email: email.trim(),
-          }),
-          updateStudentProfile({
-            roll_number: rollNumber.trim(),
-            department: department.trim(),
-            year: year.trim(),
-            college: college.trim(),
-          }),
-        ]);
+      const updatedUser = await updateMyProfile({
+        name: name.trim(),
+        email: email.trim(),
+      });
 
       setProfile(updatedUser);
-      setStudentProfile(updatedStudent);
 
       setName(updatedUser.name);
       setEmail(updatedUser.email);
 
-      setRollNumber(updatedStudent.roll_number ?? "");
-      setDepartment(updatedStudent.department ?? "");
-      setYear(updatedStudent.year ?? "");
-      setCollege(updatedStudent.college ?? "");
+      if (isStudent) {
+        const updatedStudent = await updateStudentProfile({
+          roll_number: rollNumber.trim(),
+          department: department.trim(),
+          year: year.trim(),
+          college: college.trim(),
+        });
+
+        setStudentProfile(updatedStudent);
+
+        setRollNumber(updatedStudent.roll_number ?? "");
+        setDepartment(updatedStudent.department ?? "");
+        setYear(updatedStudent.year ?? "");
+        setCollege(updatedStudent.college ?? "");
+      }
 
       setEditing(false);
       setSaved(true);
@@ -172,6 +188,7 @@ export default function ProfilePage() {
         <div className="mx-auto flex min-h-screen max-w-4xl items-center justify-center px-4">
           <div className="text-center">
             <User className="mx-auto h-10 w-10 animate-pulse text-violet-300/50" />
+
             <p className="mt-4 text-xs text-white/40">
               Loading profile...
             </p>
@@ -208,6 +225,13 @@ export default function ProfilePage() {
       </main>
     );
   }
+
+  const roleLabel =
+    profile?.role === "organizer"
+      ? "Organizer account"
+      : profile?.role === "admin"
+        ? "Admin account"
+        : "Student account";
 
   return (
     <main className="campus-background min-h-screen">
@@ -252,7 +276,7 @@ export default function ProfilePage() {
 
           <div>
             <p className="text-sm font-medium text-violet-300">
-              Student account
+              {roleLabel}
             </p>
 
             <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
@@ -288,7 +312,7 @@ export default function ProfilePage() {
                           .slice(0, 2)
                           .join("")
                           .toUpperCase()
-                      : "ST"}
+                      : "EV"}
                   </div>
 
                   <div>
@@ -298,7 +322,7 @@ export default function ProfilePage() {
                     </h3>
 
                     <p className="mt-1 text-[10px] text-white/25">
-                      Student account
+                      {roleLabel}
                     </p>
 
                     <div className="mt-2 flex items-center gap-1.5 text-[9px] text-emerald-300">
@@ -377,37 +401,41 @@ export default function ProfilePage() {
                 type="email"
               />
 
-              <ProfileField
-                icon={<IdCard size={15} />}
-                label="Roll number"
-                value={rollNumber}
-                editing={editing}
-                onChange={setRollNumber}
-              />
+              {isStudent && (
+                <>
+                  <ProfileField
+                    icon={<IdCard size={15} />}
+                    label="Roll number"
+                    value={rollNumber}
+                    editing={editing}
+                    onChange={setRollNumber}
+                  />
 
-              <ProfileField
-                icon={<GraduationCap size={15} />}
-                label="Department"
-                value={department}
-                editing={editing}
-                onChange={setDepartment}
-              />
+                  <ProfileField
+                    icon={<GraduationCap size={15} />}
+                    label="Department"
+                    value={department}
+                    editing={editing}
+                    onChange={setDepartment}
+                  />
 
-              <ProfileField
-                icon={<CalendarDays size={15} />}
-                label="Year"
-                value={year}
-                editing={editing}
-                onChange={setYear}
-              />
+                  <ProfileField
+                    icon={<CalendarDays size={15} />}
+                    label="Year"
+                    value={year}
+                    editing={editing}
+                    onChange={setYear}
+                  />
 
-              <ProfileField
-                icon={<Building2 size={15} />}
-                label="College"
-                value={college}
-                editing={editing}
-                onChange={setCollege}
-              />
+                  <ProfileField
+                    icon={<Building2 size={15} />}
+                    label="College"
+                    value={college}
+                    editing={editing}
+                    onChange={setCollege}
+                  />
+                </>
+              )}
 
               <ProfileField
                 icon={<ShieldCheck size={15} />}
@@ -443,8 +471,7 @@ export default function ProfilePage() {
 
               <p className="mt-2 text-[10px] leading-5 text-white/25">
                 Your account information is securely connected
-                to your registrations, tickets, attendance,
-                and certificates.
+                to your Evently activity and account access.
               </p>
 
               <p className="mt-4 text-[10px] text-white/30">
@@ -460,12 +487,13 @@ export default function ProfilePage() {
               </div>
 
               <h3 className="mt-4 text-xs font-semibold">
-                Student identity
+                {isStudent ? "Student identity" : "Account identity"}
               </h3>
 
               <p className="mt-2 text-[10px] leading-5 text-white/25">
-                Your roll number, department, year, and college
-                are now stored securely with your student account.
+                {isStudent
+                  ? "Your roll number, department, year, and college are stored securely with your student account."
+                  : "Your account identity and role are securely connected to your Evently account."}
               </p>
 
             </div>
@@ -495,7 +523,6 @@ export default function ProfilePage() {
   );
 }
 
-
 function ProfileField({
   icon,
   label,
@@ -515,30 +542,24 @@ function ProfileField({
     <div className="bg-[#090d15] p-5 sm:p-6">
 
       <div className="flex items-center gap-2 text-white/20">
-
         {icon}
 
-        <span className="text-[9px] uppercase tracking-wider">
+        <span className="text-[9px] font-medium uppercase tracking-wider">
           {label}
         </span>
-
       </div>
 
       {editing ? (
-
         <input
           type={type}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="mt-3 h-10 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 text-xs text-white outline-none focus:border-violet-400/30"
+          onChange={(e) => onChange(e.target.value)}
+          className="mt-3 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-xs text-white outline-none transition placeholder:text-white/20 focus:border-violet-400/30 focus:bg-white/[0.05]"
         />
-
       ) : (
-
-        <p className="mt-3 text-xs text-white/65">
+        <p className="mt-3 text-xs font-medium text-white/70">
           {value || "Not provided"}
         </p>
-
       )}
 
     </div>
