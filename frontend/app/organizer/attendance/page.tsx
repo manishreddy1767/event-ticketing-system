@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import {
   Activity,
   AlertCircle,
@@ -23,14 +24,12 @@ import { getEventAttendance, getMyEvents, getEvent, type ApiAttendance, type Api
 import { useAuth } from "@/lib/auth";
 
 interface ParticipantWithAttendance extends ApiAttendance {
-  user?: {
-    id: number;
-    name: string;
-    email: string;
-  };
-  ticket_type?: string;
-  team_name?: string;
-  status: "checked-in" | "pending";
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  ticket_type: string;
+  team_name: string | null;
+  status: string;
 }
 
 export default function AttendancePage() {
@@ -39,6 +38,10 @@ export default function AttendancePage() {
   const [event, setEvent] = useState<ApiEvent | null>(null);
   const [ticketInput, setTicketInput] = useState("");
   const [search, setSearch] = useState("");
+  const [scannerActive, setScannerActive] = useState(false);
+  const [scannerStarting, setScannerStarting] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const processingScanRef = useRef(false);
   const [scanMessage, setScanMessage] = useState<{
     type: "success" | "warning" | "error";
     title: string;
@@ -63,19 +66,7 @@ export default function AttendancePage() {
 
           const attendanceData = await getEventAttendance(firstEvent.id);
 
-          // Transform attendance data to include user details
-          // In a real app, the backend would return more joined data
-          const participantsWithDetails: ParticipantWithAttendance[] = attendanceData.map((att) => ({
-            ...att,
-            user: {
-              id: 0,
-              name: `User ${att.ticket_id}`,
-              email: "N/A",
-            },
-            status: "checked-in" as "checked-in" | "pending",
-            ticket_type: "General",
-            team_name: "N/A",
-          }));
+          const participantsWithDetails: ParticipantWithAttendance[] = attendanceData;
 
           // Also need to fetch all tickets for the event to show pending ones
           // For now we'll just show checked-in attendees
@@ -111,42 +102,43 @@ export default function AttendancePage() {
       if (!value) return true;
 
       return (
-        participant.user?.name.toLowerCase().includes(value) ||
-        participant.user?.email.toLowerCase().includes(value) ||
+        participant.user_name.toLowerCase().includes(value) ||
+        participant.user_email.toLowerCase().includes(value) ||
         participant.ticket_type?.toLowerCase().includes(value) ||
         participant.team_name?.toLowerCase().includes(value)
       );
     }
   );
 
-  async function scanTicket() {
-    const ticket = ticketInput.trim().toUpperCase();
+  async function processTicket(ticketValue: string, mode: "qr" | "ticket" = "ticket") {
+    const value = ticketValue.trim();
 
-    if (!ticket) {
+    if (!value) {
       setScanMessage({
         type: "warning",
         title: "Enter a ticket ID",
         description:
           "Enter the participant ticket ID before confirming attendance.",
       });
-
       return;
     }
 
     try {
-      const result = await checkIn(ticket);
+      const result = await checkIn(value, mode);
+
       setScanMessage({
         type: "success",
         title: "Attendance confirmed",
-        description: `Participant has been checked in successfully.`,
+        description: `Ticket ${result.ticket_id} has been checked in successfully.`,
       });
+
       setTicketInput("");
 
-      // Refresh the attendance list
       if (event) {
         const freshAttendance = await getEventAttendance(event.id);
-        // Update participants list
-        // This would need to merge with existing participants
+        const participantsWithDetails: ParticipantWithAttendance[] =
+          freshAttendance;
+        setParticipants(participantsWithDetails);
       }
     } catch (err) {
       setScanMessage({
@@ -156,6 +148,103 @@ export default function AttendancePage() {
       });
     }
   }
+
+  async function scanTicket() {
+    await processTicket(ticketInput);
+  }
+
+  async function startScanner() {
+    if (scannerActive || scannerStarting) return;
+
+    setScanMessage(null);
+    setScannerStarting(true);
+
+    try {
+      const scanner = new Html5Qrcode("qr-reader");
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 240, height: 240 },
+        },
+        async (decodedText) => {
+          if (processingScanRef.current) return;
+
+          processingScanRef.current = true;
+
+          try {
+            await stopScanner();
+            setTicketInput(decodedText);
+            await processTicket(decodedText, "qr");
+          } finally {
+            processingScanRef.current = false;
+          }
+        },
+        () => {
+          // Ignore scan attempts while the camera is searching for a QR code.
+        },
+      );
+
+      setScannerActive(true);
+    } catch (err) {
+      scannerRef.current = null;
+      setScannerActive(false);
+      setScanMessage({
+        type: "error",
+        title: "Camera unavailable",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Unable to access the camera. Please allow camera permission and try again.",
+      });
+    } finally {
+      setScannerStarting(false);
+    }
+  }
+
+  async function stopScanner() {
+    const scanner = scannerRef.current;
+
+    if (scanner) {
+      try {
+        await scanner.stop();
+      } catch {
+        // Scanner may already be stopped.
+      }
+
+      try {
+        scanner.clear();
+      } catch {
+        // Scanner UI may already be cleared.
+      }
+
+      scannerRef.current = null;
+    }
+
+    setScannerActive(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      const scanner = scannerRef.current;
+      if (scanner) {
+        scanner
+          .stop()
+          .then(() => {
+            try {
+              scanner.clear();
+            } catch {
+              // Ignore cleanup errors.
+            }
+          })
+          .catch(() => {
+            // Ignore cleanup errors.
+          });
+      }
+    };
+  }, []);
 
   function markAttendance(participantId: number) {
     // This would need to call the check-in API with the QR token
@@ -168,9 +257,12 @@ export default function AttendancePage() {
   }
 
   // Import checkIn function
-  async function checkIn(qrToken: string): Promise<ApiAttendance> {
+  async function checkIn(
+    value: string | number,
+    mode: "qr" | "ticket" = "qr",
+  ): Promise<ApiAttendance> {
     const { checkIn } = await import("@/lib/api");
-    return checkIn(qrToken);
+    return checkIn(value, mode);
   }
 
   if (loading) {
@@ -428,31 +520,71 @@ export default function AttendancePage() {
                   />
                 </div>
 
-                {/* Scanner visual */}
-
-                <div className="relative mt-7 flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border border-violet-400/10 bg-[#090d16]">
-                  <div className="absolute inset-8 rounded-2xl border border-dashed border-white/[0.08]" />
-
-                  <div className="relative flex h-44 w-44 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/[0.03]">
-                    <QrCode
-                      size={100}
-                      strokeWidth={1}
-                      className="text-violet-300/60"
+                {/* Real QR camera scanner */}
+                <div className="mt-7">
+                  <div className="relative overflow-hidden rounded-2xl border border-violet-400/10 bg-[#090d16]">
+                    <div
+                      id="qr-reader"
+                      className="min-h-[320px] w-full overflow-hidden"
                     />
 
-                    <span className="absolute -top-px left-1/2 h-0.5 w-28 -translate-x-1/2 animate-pulse bg-violet-400" />
+                    {!scannerActive && (
+                      <div className="absolute inset-0 flex min-h-[320px] flex-col items-center justify-center bg-[#090d16]">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/[0.03]">
+                          <QrCode
+                            size={52}
+                            strokeWidth={1}
+                            className="text-violet-300/60"
+                          />
+                        </div>
+
+                        <p className="mt-5 text-xs font-medium text-white/50">
+                          Camera scanner
+                        </p>
+
+                        <p className="mt-1 max-w-[240px] text-center text-[9px] leading-4 text-white/20">
+                          Start the camera and point it at a participant&apos;s
+                          ticket QR code.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="absolute bottom-5 left-0 right-0 text-center">
-                    <p className="text-[10px] font-medium text-white/50">
-                      QR camera scanner
-                    </p>
-
-                    <p className="mt-1 text-[9px] text-white/20">
-                      Camera integration will be connected to
-                      the backend
-                    </p>
+                  <div className="mt-4 flex gap-2">
+                    {!scannerActive ? (
+                      <button
+                        type="button"
+                        onClick={startScanner}
+                        disabled={scannerStarting}
+                        className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-white px-4 text-[10px] font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {scannerStarting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Starting camera...
+                          </>
+                        ) : (
+                          <>
+                            <QrCode size={14} />
+                            Start Scanner
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={stopScanner}
+                        className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-red-400/20 bg-red-400/[0.06] px-4 text-[10px] font-semibold text-red-300 transition hover:bg-red-400/[0.1]"
+                      >
+                        <XCircle size={14} />
+                        Stop Scanner
+                      </button>
+                    )}
                   </div>
+
+                  <p className="mt-3 text-center text-[9px] text-white/20">
+                    Camera access is required for QR scanning.
+                  </p>
                 </div>
 
                 {/* Manual lookup */}
@@ -485,7 +617,7 @@ export default function AttendancePage() {
                             scanTicket();
                           }
                         }}
-                        placeholder="Enter QR token..."
+                        placeholder="Enter Ticket ID..."
                         className="h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] pl-10 pr-3 text-xs uppercase text-white outline-none placeholder:text-white/15 focus:border-violet-400/30"
                       />
                     </div>
@@ -630,6 +762,10 @@ export default function AttendancePage() {
                         </th>
 
                         <th className="px-3 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
+                          Ticket ID
+                        </th>
+
+                        <th className="px-3 py-3 text-[9px] font-medium uppercase tracking-wider text-white/20">
                           Team
                         </th>
 
@@ -657,17 +793,23 @@ export default function AttendancePage() {
                             <td className="px-3 py-4">
                               <div>
                                 <p className="text-xs font-medium">
-                                  {participant.user?.name || "Unknown"}
+                                  {participant.user_name}
                                 </p>
 
                                 <p className="mt-1 text-[9px] text-white/20">
-                                  {participant.user?.email || "N/A"}
+                                  {participant.user_email}
                                 </p>
                               </div>
                             </td>
 
+                            <td className="px-3 py-4">
+                              <span className="font-mono text-[10px] text-white/50">
+                                #{participant.ticket_id}
+                              </span>
+                            </td>
+
                             <td className="px-3 py-4 text-[10px] text-white/30">
-                              {participant.team_name}
+                              {participant.team_name || "Individual"}
                             </td>
 
                             <td className="px-3 py-4">

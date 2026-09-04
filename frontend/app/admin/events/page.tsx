@@ -14,7 +14,12 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-import { getPendingEvents, approveEvent, rejectEvent } from "@/lib/api";
+import {
+  getPendingEvents,
+  approveEvent,
+  rejectEvent,
+  getAdminStats,
+} from "@/lib/api";
 
 type BackendEventStatus = "pending" | "approved" | "rejected";
 
@@ -71,19 +76,28 @@ export default function AdminEventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<AdminEvent | null>(null);
+  const [totalRegistrations, setTotalRegistrations] = useState(0);
 
   useEffect(() => {
     async function fetchEvents() {
       try {
         setLoading(true);
-        const data = await getPendingEvents();
+
+        const [data, stats] = await Promise.all([
+          getPendingEvents(),
+          getAdminStats(),
+        ]);
+
         setEvents(data);
+        setTotalRegistrations(stats.total_registrations);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load events");
       } finally {
         setLoading(false);
       }
     }
+
     fetchEvents();
   }, []);
 
@@ -123,7 +137,6 @@ export default function AdminEventsPage() {
     (event) => event.displayStatus === "Completed"
   ).length;
 
-  const totalRegistrations = 0; // Would need separate endpoint for actual registrations
 
   async function handleApproveEvent(id: number) {
     setActionLoading(id);
@@ -430,6 +443,7 @@ export default function AdminEventsPage() {
                           event={event}
                           onApprove={handleApproveEvent}
                           onReject={handleRejectEvent}
+                          onView={setSelectedEvent}
                           loading={actionLoading === event.id}
                         />
                       </td>
@@ -496,6 +510,7 @@ export default function AdminEventsPage() {
                       event={event}
                       onApprove={handleApproveEvent}
                       onReject={handleRejectEvent}
+                      onView={setSelectedEvent}
                       loading={actionLoading === event.id}
                     />
                   </div>
@@ -520,6 +535,80 @@ export default function AdminEventsPage() {
               </div>
             )}
           </div>
+
+
+          {selectedEvent && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+              onClick={() => setSelectedEvent(null)}
+            >
+              <div
+                className="w-full max-w-2xl rounded-2xl border border-white/[0.08] bg-[#0b0c14] p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest text-white/30">
+                      Event Details
+                    </p>
+
+                    <h2 className="mt-2 text-xl font-semibold text-white">
+                      {selectedEvent.title}
+                    </h2>
+
+                    <p className="mt-1 text-[10px] text-white/30">
+                      Event ID #{selectedEvent.id}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEvent(null)}
+                    className="rounded-lg border border-white/[0.07] px-3 py-2 text-[10px] text-white/50 transition hover:bg-white/[0.05] hover:text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <InfoBox
+                    label="Organizer ID"
+                    value={String(selectedEvent.organizer_id)}
+                  />
+
+                  <InfoBox
+                    label="Status"
+                    value={getDisplayStatus(selectedEvent)}
+                  />
+
+                  <InfoBox
+                    label="Date & Time"
+                    value={new Date(selectedEvent.event_date).toLocaleString()}
+                  />
+
+                  <InfoBox
+                    label="Venue"
+                    value={selectedEvent.venue}
+                  />
+
+                  <InfoBox
+                    label="Capacity"
+                    value={String(selectedEvent.capacity)}
+                  />
+
+                  <InfoBox
+                    label="Maximum Discount"
+                    value={`${selectedEvent.max_discount_percent}%`}
+                  />
+
+                  <InfoBox
+                    label="Created At"
+                    value={new Date(selectedEvent.created_at).toLocaleString()}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Admin note */}
 
@@ -623,11 +712,13 @@ function EventAction({
   event,
   onApprove,
   onReject,
+  onView,
   loading,
 }: {
   event: AdminEvent & { displayStatus: DisplayEventStatus };
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
+  onView: (event: AdminEvent & { displayStatus: DisplayEventStatus }) => void;
   loading: boolean;
 }) {
   if (event.displayStatus === "Pending Approval") {
@@ -635,11 +726,7 @@ function EventAction({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() =>
-            alert(
-              `Event details for ${event.title} will be connected to the backend later.`
-            )
-          }
+          onClick={() => onView(event)}
           className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
         >
           <Eye size={11} />
@@ -674,11 +761,7 @@ function EventAction({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() =>
-            alert(
-              `Event details for ${event.title} will be connected to the backend later.`
-            )
-          }
+          onClick={() => onView(event)}
           className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
         >
           <Eye size={11} />
@@ -696,11 +779,7 @@ function EventAction({
     <div className="flex items-center gap-2">
       <button
         type="button"
-        onClick={() =>
-          alert(
-            `Event details for ${event.title} will be connected to the backend later.`
-          )
-        }
+        onClick={() => onView(event)}
         className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] text-white/40 transition hover:bg-white/[0.06] hover:text-white"
       >
         <Eye size={11} />
@@ -713,6 +792,8 @@ function EventAction({
     </div>
   );
 }
+
+
 
 function InfoBox({
   label,

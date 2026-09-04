@@ -19,6 +19,35 @@ router = APIRouter(
 # ORGANIZER MANAGEMENT
 # =========================
 
+@router.get("/organizers")
+def get_all_organizers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    organizers = (
+        db.query(Organizer)
+        .join(User, Organizer.user_id == User.id)
+        .filter(User.role == "organizer")
+        .order_by(Organizer.created_at.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": organizer.id,
+            "user_id": organizer.user_id,
+            "name": organizer.user.name,
+            "email": organizer.user.email,
+            "organization_name": organizer.organization_name,
+            "phone": organizer.phone,
+            "description": organizer.description,
+            "status": organizer.user.status,
+            "created_at": organizer.created_at,
+        }
+        for organizer in organizers
+    ]
+
+
 @router.get("/organizers/pending")
 def get_pending_organizers(
     db: Session = Depends(get_db),
@@ -138,6 +167,20 @@ def reject_organizer(
 # EVENT MANAGEMENT
 # =========================
 
+@router.get("/events")
+def get_all_events(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    events = (
+        db.query(Event)
+        .order_by(Event.created_at.asc())
+        .all()
+    )
+
+    return events
+
+
 @router.get("/events/pending")
 def get_pending_events(
     db: Session = Depends(get_db),
@@ -235,19 +278,43 @@ def get_admin_stats(
     current_user: User = Depends(require_role("admin")),
 ):
     total_students = db.query(User).filter(User.role == "student").count()
-    total_organizers = db.query(User).filter(User.role == "organizer").count()
-    active_organizers = (
+
+    total_organizers = (
         db.query(User)
-        .filter(User.role == "organizer", User.status == "active")
+        .filter(User.role == "organizer")
         .count()
     )
+
+    active_organizers = (
+        db.query(User)
+        .filter(
+            User.role == "organizer",
+            User.status == "active",
+        )
+        .count()
+    )
+
     total_events = db.query(Event).count()
+
     upcoming_events = (
         db.query(Event)
         .filter(Event.status == "approved")
         .count()
     )
+
     total_registrations = db.query(Ticket).count()
+
+    monthly_registrations = []
+    for month in range(1, 13):
+        count = (
+            db.query(Ticket)
+            .filter(
+                Ticket.created_at.isnot(None),
+                func.extract("month", Ticket.created_at) == month,
+            )
+            .count()
+        )
+        monthly_registrations.append(count)
 
     return {
         "total_students": total_students,
@@ -256,4 +323,5 @@ def get_admin_stats(
         "total_events": total_events,
         "upcoming_events": upcoming_events,
         "total_registrations": total_registrations,
+        "monthly_registrations": monthly_registrations,
     }

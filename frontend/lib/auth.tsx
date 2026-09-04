@@ -47,7 +47,6 @@ export function AuthProvider({
       const userData = await getMe();
       setUser(userData);
     } catch (error) {
-      console.error("Failed to fetch user:", error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -58,8 +57,18 @@ export function AuthProvider({
     refreshUser();
   }, []);
 
-  const login = (token: string, role: string) => {
-    refreshUser();
+  const login = async (token: string, role: string) => {
+    setLoading(true);
+    try {
+      const userData = await getMe();
+      setUser(userData);
+    } catch (error) {
+      clearAccessToken();
+      setUser(null);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = () => {

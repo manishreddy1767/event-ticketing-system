@@ -38,7 +38,7 @@ export default function LoginPage() {
 
     try {
       const response = await login({ email, password });
-      authLogin(response.access_token, response.role);
+      await authLogin(response.access_token, response.role);
 
       // Redirect based on role
       switch (response.role) {

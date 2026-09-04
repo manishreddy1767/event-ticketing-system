@@ -121,6 +121,9 @@ export default function OrganizerDashboardPage() {
               <Link href="/organizer/certificates" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
                 <Award size={16} /> Certificates
               </Link>
+              <Link href="/profile" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
+                <Activity size={16} /> Profile
+              </Link>
             </nav>
             <div className="mt-auto">
               <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">

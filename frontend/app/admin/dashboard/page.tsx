@@ -1,8 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  LogOut,
   Activity,
   ArrowRight,
   CalendarDays,
@@ -17,6 +21,8 @@ import {
 import { getAdminStats, getPendingEvents, getPendingOrganizers, type ApiAdminStats } from "@/lib/api";
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
+  const { logout } = useAuth();
   const [stats, setStats] = useState<ApiAdminStats | null>(null);
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
   const [recentOrganizers, setRecentOrganizers] = useState<any[]>([]);
@@ -132,13 +138,13 @@ export default function AdminDashboardPage() {
             </Link>
 
             <Link
-              href="/admin/users"
+              href="/profile"
               className="hidden rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-2 text-[10px] text-white/45 transition hover:bg-white/[0.06] hover:text-white sm:block"
             >
-              Users
+              Profile
             </Link>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
+            <button onClick={() => { logout(); router.push("/login"); }} className="flex items-center gap-2 rounded-xl border border-red-400/10 bg-red-400/5 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-400/10"><LogOut size={14} />Logout</button><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
               <ShieldCheck size={16} />
             </div>
           </div>
@@ -224,32 +230,44 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="mt-6 flex h-40 items-end gap-2">
-                {[42, 55, 48, 72, 64, 88, 76, 94, 81, 100, 91, 108].map(
-                  (height, index) => (
-                    <div
-                      key={index}
-                      className="flex flex-1 items-end"
-                    >
+                {(() => {
+                  const registrations = stats?.monthly_registrations ?? [];
+                  const maxRegistration = Math.max(...registrations, 1);
+
+                  return registrations.map((count, index) => {
+                    const height =
+                      count === 0
+                        ? 4
+                        : Math.max((count / maxRegistration) * 100, 8);
+
+                    return (
                       <div
-                        className="w-full rounded-t-lg bg-violet-400/20 transition hover:bg-violet-400/35"
-                        style={{
-                          height: `${height}%`,
-                        }}
-                      />
-                    </div>
-                  )
-                )}
+                        key={index}
+                        className="group relative flex h-full flex-1 items-end"
+                      >
+                        <div
+                          className="w-full rounded-t-lg bg-violet-400/20 transition hover:bg-violet-400/35"
+                          style={{
+                            height: `${height}%`,
+                          }}
+                          title={`${count} registrations`}
+                        />
+
+                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[8px] text-white/30 opacity-0 transition group-hover:opacity-100">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
 
               <div className="mt-3 flex justify-between text-[8px] text-white/15">
-                <span>Jan</span>
-                <span>Feb</span>
-                <span>Mar</span>
-                <span>Apr</span>
-                <span>May</span>
-                <span>Jun</span>
-                <span>Jul</span>
-                <span>Aug</span>
+                {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map(
+                  (month) => (
+                    <span key={month}>{month}</span>
+                  )
+                )}
               </div>
             </div>
 
@@ -445,12 +463,6 @@ export default function AdminDashboardPage() {
                 description="Review all events across the platform."
               />
 
-              <QuickAction
-                href="/admin/users"
-                icon={<Users size={16} />}
-                title="Manage users"
-                description="Review registered student accounts."
-              />
             </div>
           </div>
         </div>

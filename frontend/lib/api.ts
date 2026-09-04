@@ -104,6 +104,11 @@ export type ApiAttendance = {
   ticket_id: number;
   checked_in_at: string;
   status: string;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  team_name: string | null;
+  ticket_type: string;
 };
 
 export type ApiCertificate = {
@@ -614,15 +619,18 @@ export async function verifyPayment(
 // ============================================================
 
 export async function checkIn(
-  qrToken: string,
+  value: string | number,
+  mode: "qr" | "ticket" = "qr",
 ): Promise<ApiAttendance> {
   return apiRequest<ApiAttendance>(
     "/attendance/check-in",
     {
       method: "POST",
-      body: JSON.stringify({
-        qr_token: qrToken,
-      }),
+      body: JSON.stringify(
+        mode === "ticket"
+          ? { ticket_id: Number(value) }
+          : { qr_token: String(value) },
+      ),
     },
     true,
   );
@@ -755,7 +763,7 @@ export async function getOrganizerRegistrations(
 
 export async function getPendingOrganizers(): Promise<any[]> {
   return apiRequest<any[]>(
-    "/admin/organizers/pending",
+    "/admin/organizers",
     {},
     true,
   );
@@ -787,7 +795,7 @@ export async function rejectOrganizer(
 
 export async function getPendingEvents(): Promise<any[]> {
   return apiRequest<any[]>(
-    "/admin/events/pending",
+    "/admin/events",
     {},
     true,
   );
@@ -824,6 +832,7 @@ export type ApiAdminStats = {
   total_events: number;
   upcoming_events: number;
   total_registrations: number;
+  monthly_registrations: number[];
 };
 
 export async function getAdminStats(): Promise<ApiAdminStats> {
