@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -17,34 +19,136 @@ import {
   Users,
 } from "lucide-react";
 
-const event = {
-  id: "1",
-  title: "AI Hackathon 2026",
-  category: "Hackathon",
-  description:
-    "Build practical AI solutions for real-world problems and showcase your ideas to industry mentors and judges.",
-  date: "12 September 2026",
-  time: "9:00 AM – 6:00 PM",
-  venue: "Main Auditorium",
-  registrations: 248,
-  capacity: 300,
-  teams: 82,
-  attendance: 0,
-  certificates: 0,
-  registrationDeadline: "8 September 2026, 11:59 PM",
-  status: "Registration open",
+type OrganizerEventView = {
+  id: number;
+  title: string;
+  category: string;
+  description: string;
+  date: string;
+  time: string;
+  venue: string;
+  registrations: number;
+  capacity: number;
+  teams: number;
+  attendance: number;
+  certificates: number;
+  registrationDeadline: string;
+  status: string;
 };
 
 export default function OrganizerEventDetailsPage() {
-  const registrationPercentage = Math.round(
-    (event.registrations / event.capacity) * 100
-  );
+  const params = useParams();
+  const eventId = Number(params.eventId);
+
+  const [event, setEvent] = useState<OrganizerEventView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadEvent() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { getMyEvent } = await import("@/lib/api");
+        const data = await getMyEvent(eventId);
+
+        const eventDate = new Date(data.event_date);
+
+        setEvent({
+          id: data.id,
+          title: data.title,
+          category: "Event",
+          description: data.description ?? "No description provided.",
+          date: eventDate.toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          }),
+          time: eventDate.toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
+          venue: data.venue,
+          registrations: data.registered_count,
+          capacity: data.capacity,
+          teams: 0,
+          attendance: 0,
+          certificates: 0,
+          registrationDeadline: "Not specified",
+          status:
+            data.status === "approved"
+              ? "Registration open"
+              : data.status === "pending"
+                ? "Pending approval"
+                : "Rejected",
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load event",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (Number.isFinite(eventId)) {
+      loadEvent();
+    } else {
+      setError("Invalid event ID");
+      setLoading(false);
+    }
+  }, [eventId]);
+
+  if (loading) {
+    return (
+      <main className="campus-background flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-violet-400" />
+          <p className="mt-4 text-xs text-white/40">
+            Loading event...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !event) {
+    return (
+      <main className="campus-background flex min-h-screen items-center justify-center px-4">
+        <div className="text-center">
+          <p className="text-sm text-red-300">
+            {error ?? "Event not found"}
+          </p>
+          <Link
+            href="/organizer/events"
+            className="mt-4 inline-flex rounded-xl border border-white/[0.07] px-4 py-2 text-xs text-white/50 hover:text-white"
+          >
+            Back to events
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  const registrationPercentage =
+    event.capacity === 0
+      ? 0
+      : Math.min(
+          100,
+          Math.round(
+            (event.registrations / event.capacity) * 100,
+          ),
+        );
 
   const attendancePercentage =
     event.registrations === 0
       ? 0
       : Math.round(
-          (event.attendance / event.registrations) * 100
+          (event.attendance / event.registrations) * 100,
         );
 
   return (

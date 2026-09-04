@@ -11,7 +11,10 @@ from app.models.ticket import Ticket
 from app.models.ticket_type import TicketType
 from app.models.user import User
 from app.schemas.certificate import CertificateResponse
-from app.services.certificates import generate_certificate_code
+from app.services.certificates import (
+    create_certificate_image,
+    generate_certificate_code,
+)
 
 
 router = APIRouter(
@@ -131,6 +134,12 @@ def generate_certificate(
             detail="Event not found",
         )
 
+    if not event.certificate_template_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate template has not been uploaded",
+        )
+
     ticket = (
         db.query(Ticket)
         .join(
@@ -178,10 +187,47 @@ def generate_certificate(
     if existing_certificate:
         return existing_certificate
 
+    base_dir = Path(__file__).resolve().parent.parent
+    template_path = base_dir / event.certificate_template_path
+
+    if not template_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate template file not found",
+        )
+
+    generated_dir = (
+        base_dir
+        / "uploads"
+        / "certificates"
+        / "generated"
+        / f"event_{event_id}"
+    )
+
+    certificate_code = generate_certificate_code()
+
+    output_path = (
+        generated_dir
+        / f"{certificate_code}.png"
+    )
+
+    event_date = event.event_date.strftime("%d %B %Y")
+
+    create_certificate_image(
+        template_path=str(template_path),
+        output_path=str(output_path),
+        student_name=current_user.name,
+        event_name=event.title,
+        event_date=event_date,
+    )
+
     certificate = Certificate(
         user_id=current_user.id,
         event_id=event_id,
-        certificate_code=generate_certificate_code(),
+        certificate_code=certificate_code,
+        certificate_path=str(
+            output_path.relative_to(base_dir)
+        ),
     )
 
     db.add(certificate)
@@ -189,6 +235,144 @@ def generate_certificate(
     db.refresh(certificate)
 
     return certificate
+
+
+@router.post(
+    "/events/{event_id}/issue-all",
+    operation_id="issue_all_event_certificates",
+)
+def issue_all_certificates(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer")),
+):
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.organizer_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    if not event.certificate_template_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate template has not been uploaded",
+        )
+
+    base_dir = Path(__file__).resolve().parent.parent
+    template_path = base_dir / event.certificate_template_path
+
+    if not template_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate template file not found",
+        )
+
+    attendance_records = (
+        db.query(Attendance)
+        .join(Ticket, Attendance.ticket_id == Ticket.id)
+        .join(TicketType, Ticket.ticket_id if False else Ticket.ticket_type_id == TicketType.id)
+        .join(User, Ticket.user_id == User.id)
+        .filter(
+            TicketType.event_id == event_id,
+            Ticket.status == "paid",
+            Attendance.status == "checked_in",
+        )
+        .all()
+    )
+
+    generated_dir = (
+        base_dir
+        / "uploads"
+        / "certificates"
+        / "generated"
+        / f"event_{event_id}"
+    )
+
+    generated_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    issued = []
+    already_issued = []
+
+    for attendance in attendance_records:
+        user = attendance.ticket.user
+
+        existing_certificate = (
+            db.query(Certificate)
+            .filter(
+                Certificate.user_id == user.id,
+                Certificate.event_id == event_id,
+            )
+            .first()
+        )
+
+        if existing_certificate:
+            if existing_certificate.certificate_path:
+                existing_file = base_dir / existing_certificate.certificate_path
+
+                if existing_file.exists():
+                    already_issued.append(user.id)
+                    continue
+
+            certificate_code = existing_certificate.certificate_code
+        else:
+            certificate_code = generate_certificate_code()
+
+        output_path = (
+            generated_dir
+            / f"{certificate_code}.png"
+        )
+
+        create_certificate_image(
+            template_path=str(template_path),
+            output_path=str(output_path),
+            student_name=user.name,
+            event_name=event.title,
+            event_date=event.event_date.strftime("%d %B %Y"),
+        )
+
+        if existing_certificate:
+            existing_certificate.certificate_path = str(
+                output_path.relative_to(base_dir)
+            )
+            certificate = existing_certificate
+        else:
+            certificate = Certificate(
+                user_id=user.id,
+                event_id=event_id,
+                certificate_code=certificate_code,
+                certificate_path=str(
+                    output_path.relative_to(base_dir)
+                ),
+            )
+            db.add(certificate)
+
+        issued.append({
+            "user_id": user.id,
+            "user_name": user.name,
+            "certificate_code": certificate_code,
+        })
+
+    db.commit()
+
+    return {
+        "message": "Certificates issued successfully",
+        "event_id": event_id,
+        "issued_count": len(issued),
+        "already_issued_count": len(already_issued),
+        "issued": issued,
+    }
 
 
 @router.get(
@@ -253,6 +437,7 @@ def get_event_certificates(
             "event_id": cert.event_id,
             "certificate_code": cert.certificate_code,
             "issued_at": cert.issued_at,
+            "certificate_path": cert.certificate_path,
             "user": {
                 "id": cert.user.id,
                 "name": cert.user.name,

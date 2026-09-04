@@ -38,6 +38,11 @@ class Certificate(Base):
         nullable=False,
     )
 
+    certificate_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
     issued_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

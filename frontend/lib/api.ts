@@ -322,6 +322,16 @@ export async function getEvent(
   return apiRequest<ApiEvent>(`/events/${eventId}`);
 }
 
+export async function getMyEvent(
+  eventId: number,
+): Promise<ApiEvent> {
+  return apiRequest<ApiEvent>(
+    `/events/my/${eventId}`,
+    {},
+    true,
+  );
+}
+
 export async function getEventTicketTypes(
   eventId: number,
 ): Promise<ApiTicketType[]> {
@@ -350,6 +360,27 @@ export async function createEvent(data: {
     "/events",
     {
       method: "POST",
+      body: JSON.stringify(data),
+    },
+    true,
+  );
+}
+
+export async function updateEvent(
+  eventId: number,
+  data: {
+    title: string;
+    description?: string;
+    venue: string;
+    event_date: string;
+    capacity: number;
+    max_discount_percent: number;
+  },
+): Promise<ApiEvent> {
+  return apiRequest<ApiEvent>(
+    `/events/${eventId}`,
+    {
+      method: "PUT",
       body: JSON.stringify(data),
     },
     true,
@@ -793,9 +824,17 @@ export async function rejectOrganizer(
   );
 }
 
-export async function getPendingEvents(): Promise<any[]> {
+export async function getAllAdminEvents(): Promise<any[]> {
   return apiRequest<any[]>(
     "/admin/events",
+    {},
+    true,
+  );
+}
+
+export async function getPendingEvents(): Promise<any[]> {
+  return apiRequest<any[]>(
+    "/admin/events/pending",
     {},
     true,
   );

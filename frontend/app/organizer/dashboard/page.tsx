@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Activity,
+  LogOut,
   ArrowRight,
   Award,
   CalendarDays,
@@ -35,6 +36,7 @@ interface DashboardStats {
 }
 
 export default function OrganizerDashboardPage() {
+  const { logout } = useAuth();
   const { user } = useAuth();
   const [events, setEvents] = useState<EventWithStats[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
@@ -124,6 +126,15 @@ export default function OrganizerDashboardPage() {
               <Link href="/profile" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-white/40 transition hover:bg-white/[0.04] hover:text-white">
                 <Activity size={16} /> Profile
               </Link>
+              <button
+                onClick={() => {
+                  logout();
+                  window.location.href = "/login";
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs text-red-400/70 transition hover:bg-red-500/10 hover:text-red-300"
+              >
+                <LogOut size={16} /> Logout
+              </button>
             </nav>
             <div className="mt-auto">
               <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
@@ -131,7 +142,7 @@ export default function OrganizerDashboardPage() {
                 <p className="mt-2 text-xs font-medium">Event Organizer</p>
                 <p className="mt-1 text-[10px] text-white/25">Vardhaman College of Engineering</p>
               </div>
-              <Link href="/" className="mt-3 block px-3 py-2 text-[10px] text-white/25 transition hover:text-white">← Back to Evently</Link>
+              <Link href="/" className="mt-1 block px-3 py-2 text-[10px] text-white/25 transition hover:text-white">← Back to Evently</Link>
             </div>
           </div>
         </aside>
@@ -143,10 +154,25 @@ export default function OrganizerDashboardPage() {
                 <p className="text-[10px] uppercase tracking-wider text-white/20">Organizer workspace</p>
                 <h1 className="mt-1 text-sm font-semibold">Dashboard</h1>
               </div>
-              <Link href="/organizer/events/create" className="flex h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90">
-                <Plus size={14} />
-                <span className="hidden sm:inline">Create event</span>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href="/profile" className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[10px] text-white/50 transition hover:bg-white/[0.06] hover:text-white">
+                  Profile
+                </Link>
+                <button
+                  onClick={() => {
+                    logout();
+                    window.location.href = "/login";
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl border border-red-400/10 bg-red-400/5 px-3 py-2 text-[10px] text-red-300 transition hover:bg-red-400/10"
+                >
+                  <LogOut size={13} />
+                  Logout
+                </button>
+                <Link href="/organizer/events/create" className="flex h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90">
+                  <Plus size={14} />
+                  <span className="hidden sm:inline">Create event</span>
+                </Link>
+              </div>
             </div>
           </header>
 
@@ -307,10 +333,28 @@ export default function OrganizerDashboardPage() {
               </h1>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <span className="hidden text-[10px] text-white/25 sm:block">
                 {new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </span>
+
+              <Link
+                href="/profile"
+                className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[10px] text-white/50 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Profile
+              </Link>
+
+              <button
+                onClick={() => {
+                  logout();
+                  window.location.href = "/login";
+                }}
+                className="flex items-center gap-1.5 rounded-xl border border-red-400/10 bg-red-400/5 px-3 py-2 text-[10px] text-red-300 transition hover:bg-red-400/10"
+              >
+                <LogOut size={13} />
+                Logout
+              </button>
 
               <Link
                 href="/organizer/events/create"

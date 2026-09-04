@@ -49,12 +49,6 @@ def create_ticket_type(
             detail="Event not found",
         )
 
-    if event.status != "approved":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ticket types can only be created for approved events",
-        )
-
     ticket_type = TicketType(
         event_id=event.id,
         name=ticket_data.name,
@@ -139,6 +133,24 @@ def book_ticket_route(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("student")),
 ):
+    event = (
+        db.query(Event)
+        .filter(Event.id == event_id)
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    if event.status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This event is not approved for registration yet",
+        )
+
     return book_ticket(
         db=db,
         ticket_data=ticket_data,

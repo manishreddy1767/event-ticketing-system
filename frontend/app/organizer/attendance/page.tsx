@@ -19,6 +19,7 @@ import {
   XCircle,
   X,
   Loader2,
+  LogOut,
 } from "lucide-react";
 import { getEventAttendance, getMyEvents, getEvent, type ApiAttendance, type ApiEvent } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -33,6 +34,8 @@ interface ParticipantWithAttendance extends ApiAttendance {
 }
 
 export default function AttendancePage() {
+  const { logout } = useAuth();
+
   const { user } = useAuth();
   const [participants, setParticipants] = useState<ParticipantWithAttendance[]>([]);
   const [event, setEvent] = useState<ApiEvent | null>(null);
@@ -398,8 +401,26 @@ export default function AttendancePage() {
             </div>
 
             <Link
-              href="/"
+              href="/profile"
               className="mt-3 block px-3 py-2 text-[10px] text-white/25 transition hover:text-white"
+            >
+              Profile
+            </Link>
+
+            <button
+              onClick={() => {
+                logout();
+                window.location.href = "/login";
+              }}
+              className="mt-1 flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-red-400/70 transition hover:text-red-300"
+            >
+              <LogOut size={13} />
+              Logout
+            </button>
+
+            <Link
+              href="/"
+              className="mt-1 block px-3 py-2 text-[10px] text-white/25 transition hover:text-white"
             >
               ← Back to Evently
             </Link>

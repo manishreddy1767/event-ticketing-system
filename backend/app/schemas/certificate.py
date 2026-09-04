@@ -9,6 +9,7 @@ class CertificateResponse(BaseModel):
     event_id: int
     certificate_code: str
     issued_at: datetime
+    certificate_path: str | None = None
 
     class Config:
         from_attributes = True

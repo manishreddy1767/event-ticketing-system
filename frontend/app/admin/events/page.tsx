@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  getPendingEvents,
+  getAllAdminEvents,
   approveEvent,
   rejectEvent,
   getAdminStats,
@@ -85,7 +85,7 @@ export default function AdminEventsPage() {
         setLoading(true);
 
         const [data, stats] = await Promise.all([
-          getPendingEvents(),
+          getAllAdminEvents(),
           getAdminStats(),
         ]);
 
@@ -138,15 +138,21 @@ export default function AdminEventsPage() {
   ).length;
 
 
+  async function refreshEvents() {
+    const [data, stats] = await Promise.all([
+      getAllAdminEvents(),
+      getAdminStats(),
+    ]);
+
+    setEvents(data);
+    setTotalRegistrations(stats.total_registrations);
+  }
+
   async function handleApproveEvent(id: number) {
     setActionLoading(id);
     try {
       await approveEvent(id);
-      setEvents((current) =>
-        current.map((event) =>
-          event.id === id ? { ...event, status: "approved" as const } : event
-        )
-      );
+      await refreshEvents();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to approve event");
     } finally {
@@ -158,11 +164,7 @@ export default function AdminEventsPage() {
     setActionLoading(id);
     try {
       await rejectEvent(id);
-      setEvents((current) =>
-        current.map((event) =>
-          event.id === id ? { ...event, status: "rejected" as const } : event
-        )
-      );
+      await refreshEvents();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to reject event");
     } finally {

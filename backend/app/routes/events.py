@@ -9,6 +9,7 @@ from app.models.ticket_type import TicketType
 from app.models.user import User
 from app.schemas.event import (
     EventCreateRequest,
+    EventUpdateRequest,
     EventResponse,
     DiscountResponse,
 )
@@ -100,6 +101,55 @@ def create_event(
     return event_with_registered_count(db, event)
 
 
+@router.put(
+    "/{event_id}",
+    response_model=EventResponse,
+)
+def update_event(
+    event_id: int,
+    event_data: EventUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer")),
+):
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.organizer_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    registered_count = get_registered_count(
+        db,
+        event.id,
+    )
+
+    if event_data.capacity < registered_count:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Capacity cannot be less than the current registration count ({registered_count})",
+        )
+
+    event.title = event_data.title
+    event.description = event_data.description
+    event.venue = event_data.venue
+    event.event_date = event_data.event_date
+    event.capacity = event_data.capacity
+    event.max_discount_percent = event_data.max_discount_percent
+
+    db.commit()
+    db.refresh(event)
+
+    return event_with_registered_count(db, event)
+
+
 @router.get(
     "",
     response_model=list[EventResponse],
@@ -139,6 +189,33 @@ def get_my_events(
         event_with_registered_count(db, event)
         for event in events
     ]
+
+
+@router.get(
+    "/my/{event_id}",
+    response_model=EventResponse,
+)
+def get_my_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer")),
+):
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.organizer_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    return event_with_registered_count(db, event)
 
 
 @router.get(

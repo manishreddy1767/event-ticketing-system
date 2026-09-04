@@ -16,6 +16,18 @@ class EventCreateRequest(BaseModel):
     )
 
 
+class EventUpdateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    description: str | None = None
+    venue: str = Field(min_length=2, max_length=255)
+    event_date: datetime
+    capacity: int = Field(gt=0)
+    max_discount_percent: Decimal = Field(
+        ge=0,
+        le=100,
+    )
+
+
 class EventResponse(BaseModel):
     id: int
     organizer_id: int

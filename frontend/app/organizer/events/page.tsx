@@ -11,6 +11,7 @@ import {
   Edit3,
   MapPin,
   Plus,
+  LogOut,
   Search,
   Ticket,
   Users,
@@ -69,6 +70,7 @@ function formatDate(dateString: string): { date: string; time: string } {
 }
 
 export default function OrganizerEventsPage() {
+  const { logout } = useAuth();
   const { user } = useAuth();
   const [events, setEvents] = useState<EventWithStats[]>([]);
   const [filter, setFilter] = useState<Filter>("All");
@@ -242,15 +244,33 @@ export default function OrganizerEventsPage() {
               </h1>
             </div>
 
-            <Link
-              href="/organizer/events/create"
-              className="flex h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90"
-            >
-              <Plus size={14} />
-              <span className="hidden sm:inline">
-                Create event
-              </span>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/profile"
+                className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[10px] text-white/50 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Profile
+              </Link>
+              <button
+                onClick={() => {
+                  logout();
+                  window.location.href = "/login";
+                }}
+                className="flex items-center gap-1.5 rounded-xl border border-red-400/10 bg-red-400/5 px-3 py-2 text-[10px] text-red-300 transition hover:bg-red-400/10"
+              >
+                <LogOut size={13} />
+                Logout
+              </button>
+              <Link
+                href="/organizer/events/create"
+                className="flex h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90"
+              >
+                <Plus size={14} />
+                <span className="hidden sm:inline">
+                  Create event
+                </span>
+              </Link>
+            </div>
           </div>
         </header>
 
@@ -486,7 +506,7 @@ export default function OrganizerEventsPage() {
                           </Link>
 
                           <Link
-                            href={`/organizer/events/${event.id}/edit`}
+                            href={`/organizer/events/${event.id}`}
                             className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.025] text-white/30 transition hover:bg-white/[0.06] hover:text-white"
                             aria-label={`Edit ${event.title}`}
                           >
