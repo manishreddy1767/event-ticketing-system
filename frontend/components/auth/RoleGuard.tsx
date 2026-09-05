@@ -16,7 +16,18 @@ function getHomeForRole(role: string): string {
   }
 }
 
-function getRequiredRole(pathname: string): "admin" | "organizer" | "student" | null {
+function getRequiredRole(
+  pathname: string
+): "admin" | "organizer" | "student" | null {
+  // Public authentication pages
+  if (
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/organizer/register"
+  ) {
+    return null;
+  }
+
   if (pathname.startsWith("/admin")) {
     return "admin";
   }
