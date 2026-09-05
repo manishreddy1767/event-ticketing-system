@@ -283,7 +283,7 @@ export async function registerOrganizer(data: {
   phone: string;
   description?: string;
 }): Promise<ApiOrganizerRegisterResponse> {
-  return apiRequest("/auth/register/organizer", {
+  return apiRequest("/auth/organizer/register", {
     method: "POST",
     body: JSON.stringify(data),
   });
