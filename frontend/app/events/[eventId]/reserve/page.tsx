@@ -14,7 +14,6 @@ import {
 import {
   getEvent,
   getEventTicketTypes,
-  getEventDiscount,
   bookTicket,
   createTeam,
   sendTeamInvitation,
@@ -49,7 +48,6 @@ export default function ReservePage({
 
   const [event, setEvent] = useState<ApiEvent | null>(null);
   const [ticketTypes, setTicketTypes] = useState<ApiTicketType[]>([]);
-  const [discount, setDiscount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,18 +88,15 @@ export default function ReservePage({
         const [
           apiEvent,
           apiTicketTypes,
-          apiDiscount,
           apiStudents,
         ] = await Promise.all([
           getEvent(numericEventId),
           getEventTicketTypes(numericEventId),
-          getEventDiscount(numericEventId),
           getStudents(),
         ]);
 
         setEvent(apiEvent);
         setTicketTypes(apiTicketTypes);
-        setDiscount(Number(apiDiscount.predicted_discount));
         setStudents(apiStudents);
 
         const myTeams = await getMyTeams();
@@ -423,12 +418,7 @@ export default function ReservePage({
   }
 
   const basePrice = Number(selectedTicketType.price);
-
-  const discountAmount = Math.round(
-    (basePrice * discount) / 100
-  );
-
-  const total = basePrice - discountAmount;
+  const total = basePrice;
 
   const steps = [
     "select",
@@ -878,17 +868,7 @@ export default function ReservePage({
                     </span>
                   </div>
 
-                  {discount > 0 && (
-                    <div className="mt-3 flex items-center justify-between text-emerald-400">
-                      <span>
-                        Smart discount ({discount}%)
-                      </span>
-
-                      <span className="font-medium">
-                        -₹{discountAmount}
-                      </span>
-                    </div>
-                  )}
+                  
 
                   <div className="mt-3 border-t border-white/10 pt-3">
                     <div className="flex items-center justify-between">
@@ -966,17 +946,7 @@ export default function ReservePage({
                   </span>
                 </div>
 
-                {discount > 0 && (
-                  <div className="flex items-center justify-between gap-4 text-sm text-emerald-400">
-                    <span className="min-w-0 truncate">
-                      Smart discount ({discount}%)
-                    </span>
-
-                    <span className="shrink-0 font-medium">
-                      -₹{discountAmount}
-                    </span>
-                  </div>
-                )}
+                
 
                 <div className="border-t border-white/10 pt-3">
                   <div className="flex items-center justify-between gap-4">

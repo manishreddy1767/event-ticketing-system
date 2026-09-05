@@ -19,10 +19,8 @@ import { motion } from "motion/react";
 import {
   getEvent,
   getEventTicketTypes,
-  getEventDiscount,
   type ApiEvent,
   type ApiTicketType,
-  type ApiDiscountResponse,
 } from "@/lib/api";
 
 type Event = {
@@ -45,7 +43,6 @@ type Event = {
     price: number;
     available_quantity: number;
   }[];
-  smartDiscount: number;
 };
 
 function formatDate(dateString: string): { date: string; time: string } {
@@ -83,10 +80,9 @@ export default function EventDetailsPage({
         const eventId = (await params).eventId;
         const numericEventId = parseInt(eventId, 10);
 
-        const [apiEvent, ticketTypes, discount] = await Promise.all([
+        const [apiEvent, ticketTypes] = await Promise.all([
           getEvent(numericEventId),
           getEventTicketTypes(numericEventId),
-          getEventDiscount(numericEventId),
         ]);
 
         const { date, time } = formatDate(apiEvent.event_date);
@@ -116,7 +112,6 @@ export default function EventDetailsPage({
           capacity: apiEvent.capacity,
           deadline: date,
           ticketTypes: transformedTicketTypes,
-          smartDiscount: Number(discount.predicted_discount),
         });
       } catch (err) {
         setError(
@@ -136,11 +131,7 @@ export default function EventDetailsPage({
 
   const basePrice = selectedTicket?.price ?? 0;
 
-  const discount = Math.round(
-    (basePrice * (event?.smartDiscount ?? 0)) / 100
-  );
-
-  const total = basePrice - discount;
+  const total = basePrice;
 
   const occupancy = event
     ? Math.round((event.registered / event.capacity) * 100)
@@ -223,12 +214,6 @@ export default function EventDetailsPage({
                   {event.category}
                 </span>
 
-                {event.smartDiscount > 0 && (
-                  <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-[10px] font-medium text-emerald-400">
-                    <Sparkles className="h-3 w-3" />
-                    Smart discount: {event.smartDiscount}%
-                  </span>
-                )}
               </div>
 
               <h1 className="mt-3 break-words text-3xl font-bold tracking-tight sm:text-4xl">
@@ -416,17 +401,7 @@ export default function EventDetailsPage({
                   </span>
                 </div>
 
-                {event.smartDiscount > 0 && (
-                  <div className="flex min-w-0 items-center justify-between gap-4 text-sm text-emerald-400">
-                    <span className="min-w-0 truncate">
-                      Smart discount ({event.smartDiscount}%)
-                    </span>
 
-                    <span className="shrink-0 font-medium">
-                      -₹{discount}
-                    </span>
-                  </div>
-                )}
 
                 <div className="border-t border-white/10 pt-3">
                   <div className="flex items-center justify-between gap-4">

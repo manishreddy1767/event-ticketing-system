@@ -7,7 +7,15 @@ class TicketTypeCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=100)
     price: Decimal = Field(ge=0)
     capacity: int = Field(gt=0)
-    team_size: int = Field(ge=1, le=3)
+    team_size: int = Field(ge=1, le=10)
+
+
+
+class TicketTypeUpdateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    price: Decimal = Field(ge=0)
+    capacity: int = Field(gt=0)
+    team_size: int = Field(ge=1, le=10)
 
 
 class TicketTypeResponse(BaseModel):

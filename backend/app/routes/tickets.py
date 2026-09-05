@@ -11,6 +11,7 @@ from app.schemas.ticket import (
     TicketCreateRequest,
     TicketResponse,
     TicketTypeCreateRequest,
+    TicketTypeUpdateRequest,
     TicketTypeResponse,
 )
 from app.services.booking import book_ticket
@@ -21,6 +22,50 @@ router = APIRouter(
     prefix="/events",
     tags=["Ticket Types"],
 )
+
+
+def validate_ticket_type_configuration(
+    event: Event,
+    team_size: int,
+    db: Session,
+    exclude_ticket_type_id: int | None = None,
+):
+    if event.registration_mode == "individual":
+        if team_size != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Individual events only support individual tickets",
+            )
+
+    elif event.registration_mode == "team":
+        if team_size < event.min_team_size or team_size > event.max_team_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Team size must be between "
+                    f"{event.min_team_size} and {event.max_team_size}"
+                ),
+            )
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid event registration mode",
+        )
+
+    query = db.query(TicketType).filter(
+        TicketType.event_id == event.id,
+        TicketType.team_size == team_size,
+    )
+
+    if exclude_ticket_type_id is not None:
+        query = query.filter(TicketType.id != exclude_ticket_type_id)
+
+    if query.first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A ticket type for team size {team_size} already exists",
+        )
 
 
 @router.post(
@@ -59,6 +104,61 @@ def create_ticket_type(
     )
 
     db.add(ticket_type)
+    db.commit()
+    db.refresh(ticket_type)
+
+    return ticket_type
+
+
+@router.put(
+    "/ticket-types/{ticket_type_id}",
+    response_model=TicketTypeResponse,
+)
+def update_ticket_type(
+    ticket_type_id: int,
+    ticket_data: TicketTypeUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("organizer")),
+):
+    ticket_type = (
+        db.query(TicketType)
+        .join(Event, TicketType.event_id == Event.id)
+        .filter(
+            TicketType.id == ticket_type_id,
+            Event.organizer_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not ticket_type:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket type not found",
+        )
+
+    sold_quantity = ticket_type.capacity - ticket_type.available_quantity
+
+    if ticket_data.capacity < sold_quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Capacity cannot be less than already registered quantity ({sold_quantity})",
+        )
+
+    validate_ticket_type_configuration(
+        event=ticket_type.event,
+        team_size=ticket_data.team_size,
+        db=db,
+        exclude_ticket_type_id=ticket_type.id,
+    )
+
+    new_available_quantity = ticket_data.capacity - sold_quantity
+
+    ticket_type.name = ticket_data.name
+    ticket_type.price = ticket_data.price
+    ticket_type.capacity = ticket_data.capacity
+    ticket_type.available_quantity = new_available_quantity
+    ticket_type.team_size = ticket_data.team_size
+
     db.commit()
     db.refresh(ticket_type)
 

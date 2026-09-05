@@ -4,7 +4,6 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.ml.predict import predict_discount
 from app.models.event import Event
 from app.models.team import Team
 from app.models.team_member import TeamMember
@@ -125,33 +124,10 @@ def book_ticket(
         .count()
     )
 
-    days_until_event = max(
-        0,
-        (event.event_date - datetime.utcnow()).days,
-    )
+    discount_percent = 0
+    discount_amount = Decimal("0.00")
 
-    predicted_discount = predict_discount(
-        registered_count=registered_count,
-        capacity=event.capacity,
-        days_until_event=days_until_event,
-    )
-
-    discount_percent = min(
-        predicted_discount,
-        float(event.max_discount_percent),
-    )
-
-    discount_amount = (
-        original_amount
-        * Decimal(str(discount_percent))
-        / Decimal("100")
-    ).quantize(
-        Decimal("0.01")
-    )
-
-    total_amount = (
-        original_amount - discount_amount
-    ).quantize(
+    total_amount = original_amount.quantize(
         Decimal("0.01")
     )
 

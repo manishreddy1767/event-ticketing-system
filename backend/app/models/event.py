@@ -66,6 +66,30 @@ class Event(Base):
         default=0,
     )
 
+    event_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="other",
+    )
+
+    registration_mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="individual",
+    )
+
+    min_team_size: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    max_team_size: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
     certificate_template_path: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,

@@ -542,14 +542,6 @@ export default function EventsPage() {
                           Capacity: {event.capacity}
                         </span>
 
-                        {event.discount &&
-                          event.discount > 0 && (
-                            <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
-                              Up to{" "}
-                              {event.discount}%
-                              discount
-                            </span>
-                          )}
 
                       </div>
 

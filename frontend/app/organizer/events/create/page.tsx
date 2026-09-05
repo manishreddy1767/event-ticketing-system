@@ -23,13 +23,13 @@ import {
 import { createEvent, createTicketType, type ApiEvent } from "@/lib/api";
 
 const categories = [
-  "Hackathon",
-  "Workshop",
-  "Competition",
-  "Seminar",
-  "Technical Event",
-  "Cultural Event",
-  "Other",
+  { value: "hackathon", label: "Hackathon" },
+  { value: "workshop", label: "Workshop" },
+  { value: "seminar", label: "Seminar" },
+  { value: "conference", label: "Conference" },
+  { value: "competition", label: "Competition" },
+  { value: "meetup", label: "Meetup" },
+  { value: "other", label: "Other" },
 ];
 
 export default function CreateEventPage() {
@@ -46,7 +46,7 @@ export default function CreateEventPage() {
 
   const [form, setForm] = useState({
     title: "",
-    category: "Hackathon",
+    category: "hackathon",
     description: "",
     eventDate: "",
     startTime: "",
@@ -55,10 +55,13 @@ export default function CreateEventPage() {
     registrationEnd: "",
     venue: "",
     capacity: "100",
-    maxDiscountPercent: "20",
-    teamSize: "1",
-    ticketName: "General Admission",
-    ticketPrice: "0",
+    registrationMode: "individual" as "individual" | "team",
+    minTeamSize: "2",
+    maxTeamSize: "2",
+    individualPrice: "0",
+    teamPrices: {
+      2: "0",
+    } as Record<number, string>,
     certificateEnabled: true,
     rules: "",
   });
@@ -71,6 +74,65 @@ export default function CreateEventPage() {
       ...current,
       [field]: value,
     }));
+
+    setSaved(false);
+    setPublished(false);
+    setError(null);
+  }
+
+  function updateTeamPrice(size: number, value: string) {
+    setForm((current) => ({
+      ...current,
+      teamPrices: {
+        ...current.teamPrices,
+        [size]: value,
+      },
+    }));
+
+    setSaved(false);
+    setPublished(false);
+    setError(null);
+  }
+
+  function getTeamPrice(size: number) {
+    return form.teamPrices[size] ?? "";
+  }
+
+  function handleRegistrationModeChange(
+    mode: "individual" | "team"
+  ) {
+    setForm((current) => ({
+      ...current,
+      registrationMode: mode,
+      minTeamSize: mode === "individual" ? "1" : "2",
+      maxTeamSize: mode === "individual" ? "1" : "2",
+    }));
+
+    setSaved(false);
+    setPublished(false);
+    setError(null);
+  }
+
+  function handleMaxTeamSizeChange(value: string) {
+    const max = Number(value);
+
+    setForm((current) => {
+      const teamPrices = { ...current.teamPrices };
+
+      if (Number.isFinite(max) && max >= 2) {
+        for (let size = 2; size <= max; size++) {
+          if (teamPrices[size] === undefined) {
+            teamPrices[size] = "";
+          }
+        }
+      }
+
+      return {
+        ...current,
+        maxTeamSize: value,
+        teamPrices,
+      };
+    });
 
     setSaved(false);
     setPublished(false);
@@ -139,26 +201,44 @@ export default function CreateEventPage() {
     setSaved(false);
 
     try {
-      // Combine date and time for event_date
       const eventDateTime = `${form.eventDate}T${form.startTime}:00`;
+      const capacity = Number(form.capacity);
+      const minTeamSize = Number(form.minTeamSize);
+      const maxTeamSize = Number(form.maxTeamSize);
 
-      // Create the event
+      if (form.registrationMode === "team" && minTeamSize > maxTeamSize) {
+        throw new Error("Minimum team size cannot be greater than maximum team size");
+      }
+
       const newEvent: ApiEvent = await createEvent({
         title: form.title,
         description: form.description,
         venue: form.venue,
         event_date: eventDateTime,
-        capacity: Number(form.capacity),
-        max_discount_percent: Number(form.maxDiscountPercent),
+        capacity,
+        event_type: form.category,
+        registration_mode: form.registrationMode,
+        min_team_size: form.registrationMode === "individual" ? 1 : minTeamSize,
+        max_team_size: form.registrationMode === "individual" ? 1 : maxTeamSize,
       });
 
-      // Create the ticket type
-      await createTicketType(newEvent.id, {
-        name: form.ticketName,
-        price: Number(form.ticketPrice),
-        capacity: Number(form.capacity),
-        team_size: Number(form.teamSize),
-      });
+      if (form.registrationMode === "individual") {
+        await createTicketType(newEvent.id, {
+          name: "Individual",
+          price: Number(form.individualPrice),
+          capacity,
+          team_size: 1,
+        });
+      } else {
+        for (let size = minTeamSize; size <= maxTeamSize; size++) {
+          await createTicketType(newEvent.id, {
+            name: `Team of ${size}`,
+            price: Number(form.teamPrices[size] ?? 0),
+            capacity: Math.max(1, Math.floor(capacity / size)),
+            team_size: size,
+          });
+        }
+      }
 
       setPublished(true);
     } catch (err) {
@@ -451,11 +531,11 @@ export default function CreateEventPage() {
                       >
                         {categories.map((category) => (
                           <option
-                            key={category}
-                            value={category}
+                            key={category.value}
+                            value={category.value}
                             className="bg-[#0c101a]"
                           >
-                            {category}
+                            {category.label}
                           </option>
                         ))}
                       </select>
@@ -815,101 +895,160 @@ export default function CreateEventPage() {
 
                   <div>
                     <label
-                      htmlFor="teamSize"
+                      htmlFor="registrationMode"
                       className="text-[10px] uppercase tracking-wider text-white/25"
                     >
-                      Maximum team size
+                      Registration type
                     </label>
 
-                    <input
-                      id="teamSize"
-                      type="number"
-                      min="1"
-                      max="3"
-                      required
-                      value={form.teamSize}
+                    <select
+                      id="registrationMode"
+                      value={form.registrationMode}
                       onChange={(event) =>
-                        updateField(
-                          "teamSize",
-                          event.target.value
+                        handleRegistrationModeChange(
+                          event.target.value as "individual" | "team"
                         )
                       }
                       className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="maxDiscountPercent"
-                      className="text-[10px] uppercase tracking-wider text-white/25"
                     >
-                      Maximum discount (%)
-                    </label>
-
-                    <input
-                      id="maxDiscountPercent"
-                      type="number"
-                      min="0"
-                      max="100"
-                      required
-                      value={form.maxDiscountPercent}
-                      onChange={(event) =>
-                        updateField(
-                          "maxDiscountPercent",
-                          event.target.value
-                        )
-                      }
-                      className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
-                    />
+                      <option value="individual" className="bg-slate-900">
+                        Individual
+                      </option>
+                      <option value="team" className="bg-slate-900">
+                        Team
+                      </option>
+                    </select>
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="ticketName"
-                      className="text-[10px] uppercase tracking-wider text-white/25"
-                    >
-                      Ticket type name
-                    </label>
+                  {form.registrationMode === "individual" ? (
+                    <div>
+                      <label
+                        htmlFor="individualPrice"
+                        className="text-[10px] uppercase tracking-wider text-white/25"
+                      >
+                        Individual ticket price (₹)
+                      </label>
 
-                    <input
-                      id="ticketName"
-                      required
-                      value={form.ticketName}
-                      onChange={(event) =>
-                        updateField(
-                          "ticketName",
-                          event.target.value
-                        )
-                      }
-                      placeholder="e.g. General Admission"
-                      className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none placeholder:text-white/15 focus:border-violet-400/30"
-                    />
-                  </div>
+                      <input
+                        id="individualPrice"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={form.individualPrice}
+                        onChange={(event) =>
+                          updateField(
+                            "individualPrice",
+                            event.target.value
+                          )
+                        }
+                        className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="minTeamSize"
+                          className="text-[10px] uppercase tracking-wider text-white/25"
+                        >
+                          Minimum team size
+                        </label>
 
-                  <div>
-                    <label
-                      htmlFor="ticketPrice"
-                      className="text-[10px] uppercase tracking-wider text-white/25"
-                    >
-                      Ticket price (₹)
-                    </label>
+                        <input
+                          id="minTeamSize"
+                          type="number"
+                          min="2"
+                          max="10"
+                          required
+                          value={form.minTeamSize}
+                          onChange={(event) =>
+                            updateField(
+                              "minTeamSize",
+                              event.target.value
+                            )
+                          }
+                          className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
+                        />
+                      </div>
 
-                    <input
-                      id="ticketPrice"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      required
-                      value={form.ticketPrice}
-                      onChange={(event) =>
-                        updateField(
-                          "ticketPrice",
-                          event.target.value
-                        )
-                      }
-                      className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
-                    />
-                  </div>
+                      <div>
+                        <label
+                          htmlFor="maxTeamSize"
+                          className="text-[10px] uppercase tracking-wider text-white/25"
+                        >
+                          Maximum team size
+                        </label>
+
+                        <input
+                          id="maxTeamSize"
+                          type="number"
+                          min="2"
+                          max="10"
+                          required
+                          value={form.maxTeamSize}
+                          onChange={(event) =>
+                            handleMaxTeamSizeChange(event.target.value)
+                          }
+                          className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none focus:border-violet-400/30"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <div className="mb-3">
+                          <p className="text-[10px] uppercase tracking-wider text-white/25">
+                            Team pricing
+                          </p>
+
+                          <p className="mt-1 text-[10px] text-white/25">
+                            Set a separate ticket price for every allowed team size.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {Array.from(
+                            {
+                              length: Math.max(
+                                0,
+                                Number(form.maxTeamSize) -
+                                  Number(form.minTeamSize) +
+                                  1
+                              ),
+                            },
+                            (_, index) => Number(form.minTeamSize) + index
+                          )
+                            .filter((size) => size >= 2 && size <= 10)
+                            .map((size) => (
+                              <div key={size}>
+                                <label
+                                  htmlFor={`teamPrice-${size}`}
+                                  className="text-[10px] uppercase tracking-wider text-white/25"
+                                >
+                                  Team of {size} price (₹)
+                                </label>
+
+                                <input
+                                  id={`teamPrice-${size}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  required
+                                  value={getTeamPrice(size)}
+                                  onChange={(event) =>
+                                    updateTeamPrice(
+                                      size,
+                                      event.target.value
+                                    )
+                                  }
+                                  placeholder={`Price for ${size} members`}
+                                  className="mt-2 h-12 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-xs text-white outline-none placeholder:text-white/15 focus:border-violet-400/30"
+                                />
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-6 rounded-xl border border-violet-400/10 bg-violet-400/[0.03] p-4">
@@ -1135,19 +1274,35 @@ export default function CreateEventPage() {
                   />
 
                   <ChecklistItem
-                    label="Capacity & team settings"
+                    label="Event type & capacity"
                     complete={
-                      Number(form.capacity) > 0 &&
-                      Number(form.teamSize) > 0
+                      form.category.length > 0 &&
+                      Number(form.capacity) > 0
                     }
                   />
 
                   <ChecklistItem
-                    label="Discount & ticket settings"
+                    label="Registration & pricing"
                     complete={
-                      Number(form.maxDiscountPercent) >= 0 &&
-                      form.ticketName.trim().length > 0 &&
-                      Number(form.ticketPrice) >= 0
+                      form.registrationMode === "individual"
+                        ? Number(form.individualPrice) >= 0
+                        : Number(form.minTeamSize) >= 2 &&
+                          Number(form.maxTeamSize) >= Number(form.minTeamSize) &&
+                          Array.from(
+                            {
+                              length:
+                                Number(form.maxTeamSize) -
+                                Number(form.minTeamSize) +
+                                1,
+                            },
+                            (_, index) =>
+                              Number(form.minTeamSize) + index
+                          ).every(
+                            (size) =>
+                              form.teamPrices[size] !== undefined &&
+                              form.teamPrices[size].trim().length > 0 &&
+                              Number(form.teamPrices[size]) >= 0
+                          )
                     }
                   />
                 </div>

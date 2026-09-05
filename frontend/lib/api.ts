@@ -11,8 +11,12 @@ export type ApiEvent = {
   venue: string;
   event_date: string;
   capacity: number;
-  registered_count: number;
   max_discount_percent: number;
+  event_type: string;
+  registration_mode: "individual" | "team";
+  min_team_size: number;
+  max_team_size: number;
+  registered_count: number;
   status: string;
   certificate_template_path: string | null;
   created_at: string;
@@ -139,10 +143,7 @@ export type ApiOrganizerRegisterResponse = {
   created_at: string;
 };
 
-export type ApiDiscountResponse = {
-  event_id: number;
-  predicted_discount: number;
-};
+
 
 // Token management
 
@@ -340,13 +341,7 @@ export async function getEventTicketTypes(
   );
 }
 
-export async function getEventDiscount(
-  eventId: number,
-): Promise<ApiDiscountResponse> {
-  return apiRequest<ApiDiscountResponse>(
-    `/events/${eventId}/discount`,
-  );
-}
+
 
 export async function createEvent(data: {
   title: string;
@@ -354,7 +349,10 @@ export async function createEvent(data: {
   venue: string;
   event_date: string;
   capacity: number;
-  max_discount_percent: number;
+  event_type: string;
+  registration_mode: "individual" | "team";
+  min_team_size: number;
+  max_team_size: number;
 }): Promise<ApiEvent> {
   return apiRequest(
     "/events",
@@ -375,6 +373,10 @@ export async function updateEvent(
     event_date: string;
     capacity: number;
     max_discount_percent: number;
+    event_type: string;
+    registration_mode: "individual" | "team";
+    min_team_size: number;
+    max_team_size: number;
   },
 ): Promise<ApiEvent> {
   return apiRequest<ApiEvent>(

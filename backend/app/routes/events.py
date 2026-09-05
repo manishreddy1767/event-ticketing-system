@@ -11,7 +11,6 @@ from app.schemas.event import (
     EventCreateRequest,
     EventUpdateRequest,
     EventResponse,
-    DiscountResponse,
 )
 
 
@@ -19,6 +18,51 @@ router = APIRouter(
     prefix="/events",
     tags=["Events"],
 )
+
+
+ALLOWED_EVENT_TYPES = {
+    "hackathon",
+    "workshop",
+    "seminar",
+    "conference",
+    "competition",
+    "meetup",
+    "other",
+}
+
+
+def validate_event_configuration(event_data):
+    if event_data.event_type not in ALLOWED_EVENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid event type",
+        )
+
+    if event_data.registration_mode == "individual":
+        if event_data.min_team_size != 1 or event_data.max_team_size != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Individual events must have team size 1",
+            )
+
+    elif event_data.registration_mode == "team":
+        if event_data.min_team_size < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Team events must have a minimum team size of at least 2",
+            )
+
+        if event_data.max_team_size < event_data.min_team_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum team size cannot be less than minimum team size",
+            )
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration mode must be individual or team",
+        )
 
 
 def get_registered_count(
@@ -91,6 +135,10 @@ def create_event(
         event_date=event_data.event_date,
         capacity=event_data.capacity,
         max_discount_percent=event_data.max_discount_percent,
+        event_type=event_data.event_type,
+        registration_mode=event_data.registration_mode,
+        min_team_size=event_data.min_team_size,
+        max_team_size=event_data.max_team_size,
         status="pending",
     )
 
@@ -137,12 +185,18 @@ def update_event(
             detail=f"Capacity cannot be less than the current registration count ({registered_count})",
         )
 
+    validate_event_configuration(event_data)
+
     event.title = event_data.title
     event.description = event_data.description
     event.venue = event_data.venue
     event.event_date = event_data.event_date
     event.capacity = event_data.capacity
     event.max_discount_percent = event_data.max_discount_percent
+    event.event_type = event_data.event_type
+    event.registration_mode = event_data.registration_mode
+    event.min_team_size = event_data.min_team_size
+    event.max_team_size = event_data.max_team_size
 
     db.commit()
     db.refresh(event)
@@ -205,68 +259,6 @@ def get_my_event(
         .filter(
             Event.id == event_id,
             Event.organizer_id == current_user.id,
-        )
-        .first()
-    )
-
-    if not event:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Event not found",
-        )
-
-    return event_with_registered_count(db, event)
-
-
-@router.get(
-    "/{event_id}/discount",
-    response_model=DiscountResponse,
-)
-def get_event_discount(
-    event_id: int,
-    db: Session = Depends(get_db),
-):
-    event = (
-        db.query(Event)
-        .filter(
-            Event.id == event_id,
-            Event.status == "approved",
-        )
-        .first()
-    )
-
-    if not event:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Event not found",
-        )
-
-    from app.ml.predict import save_discount_prediction
-
-    prediction = save_discount_prediction(
-        db,
-        event,
-    )
-
-    return {
-        "event_id": event.id,
-        "predicted_discount": prediction.predicted_discount,
-    }
-
-
-@router.get(
-    "/{event_id}",
-    response_model=EventResponse,
-)
-def get_event(
-    event_id: int,
-    db: Session = Depends(get_db),
-):
-    event = (
-        db.query(Event)
-        .filter(
-            Event.id == event_id,
-            Event.status == "approved",
         )
         .first()
     )

@@ -14,6 +14,10 @@ class EventCreateRequest(BaseModel):
         ge=0,
         le=100,
     )
+    event_type: str = Field(min_length=2, max_length=50)
+    registration_mode: str = Field(pattern="^(individual|team)$")
+    min_team_size: int = Field(ge=1, le=10)
+    max_team_size: int = Field(ge=1, le=10)
 
 
 class EventUpdateRequest(BaseModel):
@@ -26,6 +30,10 @@ class EventUpdateRequest(BaseModel):
         ge=0,
         le=100,
     )
+    event_type: str = Field(min_length=2, max_length=50)
+    registration_mode: str = Field(pattern="^(individual|team)$")
+    min_team_size: int = Field(ge=1, le=10)
+    max_team_size: int = Field(ge=1, le=10)
 
 
 class EventResponse(BaseModel):
@@ -38,14 +46,13 @@ class EventResponse(BaseModel):
     capacity: int
     registered_count: int
     max_discount_percent: Decimal
+    event_type: str
+    registration_mode: str
+    min_team_size: int
+    max_team_size: int
     status: str
     certificate_template_path: str | None
     created_at: datetime
 
     class Config:
         from_attributes = True
-
-
-class DiscountResponse(BaseModel):
-    event_id: int
-    predicted_discount: Decimal

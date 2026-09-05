@@ -27,6 +27,12 @@ export default function EditEventPage() {
   const [eventDate, setEventDate] = useState("");
   const [capacity, setCapacity] = useState("");
   const [maxDiscount, setMaxDiscount] = useState("");
+  const [eventType, setEventType] = useState("other");
+  const [registrationMode, setRegistrationMode] = useState<
+    "individual" | "team"
+  >("individual");
+  const [minTeamSize, setMinTeamSize] = useState("1");
+  const [maxTeamSize, setMaxTeamSize] = useState("1");
 
   useEffect(() => {
     async function loadEvent() {
@@ -55,6 +61,10 @@ export default function EditEventPage() {
         setEventDate(localDate);
         setCapacity(String(event.capacity));
         setMaxDiscount(String(event.max_discount_percent));
+        setEventType(event.event_type);
+        setRegistrationMode(event.registration_mode);
+        setMinTeamSize(String(event.min_team_size));
+        setMaxTeamSize(String(event.max_team_size));
       } catch (err) {
         setError(
           err instanceof Error
@@ -83,6 +93,12 @@ export default function EditEventPage() {
         event_date: new Date(eventDate).toISOString(),
         capacity: Number(capacity),
         max_discount_percent: Number(maxDiscount),
+        event_type: eventType,
+        registration_mode: registrationMode,
+        min_team_size:
+          registrationMode === "individual" ? 1 : Number(minTeamSize),
+        max_team_size:
+          registrationMode === "individual" ? 1 : Number(maxTeamSize),
       });
 
       router.push(`/organizer/events/${eventId}`);
@@ -245,22 +261,113 @@ export default function EditEventPage() {
               </div>
             </div>
 
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-white/30">
-                Maximum discount (%)
-              </label>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-white/30">
+                  Event type
+                </label>
 
-              <input
-                required
-                type="number"
-                min={0}
-                max={100}
-                step="0.01"
-                value={maxDiscount}
-                onChange={(e) => setMaxDiscount(e.target.value)}
-                className="mt-2 h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-sm text-white outline-none focus:border-violet-400/40"
-              />
+                <select
+                  required
+                  value={eventType}
+                  onChange={(e) => setEventType(e.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-sm text-white outline-none focus:border-violet-400/40"
+                >
+                  <option value="hackathon" className="bg-slate-900">
+                    Hackathon
+                  </option>
+                  <option value="workshop" className="bg-slate-900">
+                    Workshop
+                  </option>
+                  <option value="seminar" className="bg-slate-900">
+                    Seminar
+                  </option>
+                  <option value="conference" className="bg-slate-900">
+                    Conference
+                  </option>
+                  <option value="competition" className="bg-slate-900">
+                    Competition
+                  </option>
+                  <option value="meetup" className="bg-slate-900">
+                    Meetup
+                  </option>
+                  <option value="other" className="bg-slate-900">
+                    Other
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-white/30">
+                  Registration type
+                </label>
+
+                <select
+                  required
+                  value={registrationMode}
+                  onChange={(e) =>
+                    setRegistrationMode(
+                      e.target.value as "individual" | "team"
+                    )
+                  }
+                  className="mt-2 h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-sm text-white outline-none focus:border-violet-400/40"
+                >
+                  <option value="individual" className="bg-slate-900">
+                    Individual
+                  </option>
+                  <option value="team" className="bg-slate-900">
+                    Team
+                  </option>
+                </select>
+              </div>
             </div>
+
+            {registrationMode === "team" && (
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-white/30">
+                    Minimum team size
+                  </label>
+
+                  <input
+                    required
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={minTeamSize}
+                    onChange={(e) => setMinTeamSize(e.target.value)}
+                    className="mt-2 h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-sm text-white outline-none focus:border-violet-400/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-white/30">
+                    Maximum team size
+                  </label>
+
+                  <input
+                    required
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={maxTeamSize}
+                    onChange={(e) => setMaxTeamSize(e.target.value)}
+                    className="mt-2 h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 text-sm text-white outline-none focus:border-violet-400/40"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 rounded-xl border border-violet-400/10 bg-violet-400/[0.03] p-4">
+                  <p className="text-xs font-medium">
+                    Team ticket prices
+                  </p>
+
+                  <p className="mt-1 text-[10px] leading-5 text-white/30">
+                    Ticket prices can be edited from the ticket
+                    configuration after the event settings are saved.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 border-t border-white/[0.06] pt-6 sm:flex-row sm:justify-end">
               <Link
