@@ -11,6 +11,7 @@ class EventCreateRequest(BaseModel):
     event_date: datetime
     capacity: int = Field(gt=0)
     max_discount_percent: Decimal = Field(
+        default=Decimal("0.00"),
         ge=0,
         le=100,
     )
@@ -27,6 +28,7 @@ class EventUpdateRequest(BaseModel):
     event_date: datetime
     capacity: int = Field(gt=0)
     max_discount_percent: Decimal = Field(
+        default=Decimal("0.00"),
         ge=0,
         le=100,
     )
