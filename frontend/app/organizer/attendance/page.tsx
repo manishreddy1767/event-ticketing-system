@@ -86,7 +86,7 @@ export default function AttendancePage() {
   }, [user]);
 
   const checkedInCount = participants.filter(
-    (participant) => participant.status === "checked-in"
+    (participant) => participant.status === "checked_in"
   ).length;
 
   const pendingCount = participants.length - checkedInCount;
