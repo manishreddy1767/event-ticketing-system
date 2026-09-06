@@ -841,7 +841,7 @@ export default function AttendancePage() {
 
                             <td className="px-3 py-4">
                               {participant.status ===
-                              "checked-in" ? (
+                              "checked_in" ? (
                                 <div>
                                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[9px] text-emerald-300">
                                     <CheckCircle2 size={10} />
