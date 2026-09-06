@@ -229,32 +229,6 @@ def get_events(
 
 
 @router.get(
-    "/{event_id}",
-    response_model=EventResponse,
-)
-def get_event(
-    event_id: int,
-    db: Session = Depends(get_db),
-):
-    event = (
-        db.query(Event)
-        .filter(
-            Event.id == event_id,
-            Event.status == "approved",
-        )
-        .first()
-    )
-
-    if not event:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Event not found",
-        )
-
-    return event_with_registered_count(db, event)
-
-
-@router.get(
     "/my",
     response_model=list[EventResponse],
 )
@@ -289,6 +263,32 @@ def get_my_event(
         .filter(
             Event.id == event_id,
             Event.organizer_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    return event_with_registered_count(db, event)
+
+
+@router.get(
+    "/{event_id}",
+    response_model=EventResponse,
+)
+def get_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+):
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.status == "approved",
         )
         .first()
     )
