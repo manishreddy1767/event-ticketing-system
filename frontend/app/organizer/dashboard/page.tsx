@@ -63,7 +63,7 @@ export default function OrganizerDashboardPage() {
         // In a full implementation, we'd fetch these per event
         const eventsWithStats: EventWithStats[] = eventsData.map((event) => ({
           ...event,
-          registrations: Math.floor(Math.random() * event.capacity * 0.8), // Placeholder
+          registrations: event.registered_count ?? 0,
           attendance: 0,
           certificates: 0,
         }));

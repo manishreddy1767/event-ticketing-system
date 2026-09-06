@@ -91,7 +91,7 @@ export default function OrganizerEventsPage() {
           const dateTime = formatDate(event.event_date);
           return {
             ...event,
-            registrations: Math.floor(Math.random() * event.capacity * 0.8), // Placeholder
+            registrations: event.registered_count ?? 0,
             registrationDeadline: dateTime.date, // Using event date as deadline for display
             date: dateTime.date,
             time: dateTime.time,
