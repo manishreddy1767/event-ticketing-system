@@ -18,7 +18,13 @@ import {
   Loader2,
   LogOut,
 } from "lucide-react";
-import { getOrganizerRegistrations, getEvent, type ApiRegistration, type ApiEvent } from "@/lib/api";
+import {
+  getOrganizerRegistrations,
+  getEventAttendance,
+  getMyEvents,
+  type ApiRegistration,
+  type ApiEvent,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 type RegistrationStatus = "Paid" | "Pending" | "Cancelled";
@@ -64,31 +70,39 @@ export default function OrganizerRegistrationsPage() {
       try {
         setLoading(true);
 
-        // First get the organizer's events to find the event ID
-        const events = await getEvent(user.id);
-        // Actually, we need to get events first. Let's fetch the first event for now
-        // In a real implementation, this would come from route params
-        // For demo purposes, let's get all organizer events and use the first one
-        // We need to import getMyEvents
-        const { getMyEvents } = await import("@/lib/api");
         const myEvents = await getMyEvents();
 
         if (myEvents.length > 0) {
           const firstEvent = myEvents[0];
           setEvent(firstEvent);
 
-          const regs = await getOrganizerRegistrations(firstEvent.id);
+          const [regs, attendanceData] = await Promise.all([
+            getOrganizerRegistrations(firstEvent.id),
+            getEventAttendance(firstEvent.id),
+          ]);
 
-          // Transform registrations to include attendance status
-          const registrationsWithAttendance: RegistrationWithAttendance[] = regs.map((reg) => ({
-            ...reg,
-            attendance: "Not checked in" as "Present" | "Not checked in", // TODO: fetch actual attendance
-          }));
+          const checkedInTicketIds = new Set(
+            attendanceData
+              .filter((attendance) => attendance.status === "checked_in")
+              .map((attendance) => attendance.ticket_id)
+          );
+
+          const registrationsWithAttendance: RegistrationWithAttendance[] =
+            regs.map((reg) => ({
+              ...reg,
+              attendance: checkedInTicketIds.has(reg.id)
+                ? "Present"
+                : "Not checked in",
+            }));
 
           setRegistrations(registrationsWithAttendance);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load registrations");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load registrations"
+        );
       } finally {
         setLoading(false);
       }
